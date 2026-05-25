@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: warehouse-now-ats
+    runtime: node
+    plan: starter
+    buildCommand: npm install && npx next build
+    startCommand: node .next/standalone/server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /var/data/ats
+      - key: UPLOAD_DIR
+        value: /var/data/ats/uploads
+      - key: PORT
+        value: 3000
+      - key: HOSTNAME
+        value: 0.0.0.0
+    disk:
+      name: ats-data
+      mountPath: /var/data/ats
+      sizeGB: 1

@@ -2,7 +2,11 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import { Candidate, ActivityLog, EmailTemplate, DashboardStats, FilterParams, TeamMember, Remark } from './types';
 
-const DB_PATH = path.join(process.cwd(), 'data', 'ats.db');
+import fs from 'fs';
+
+const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+const DB_PATH = path.join(DATA_DIR, 'ats.db');
 
 let db: Database.Database | null = null;
 
