@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Logo } from '@/components/Logo';
 import { Candidate } from '@/lib/types';
-import { CheckCircle, AlertCircle, Loader2, Save, User } from 'lucide-react';
+import { CheckCircle, AlertCircle, Loader2, Save, User, UserPlus, Clock } from 'lucide-react';
+
+const PIPELINE = ['New', 'Contacted', 'Screening', 'Interviewing', 'Offered', 'Hired'];
 
 export default function CandidatePortal() {
   const searchParams = useSearchParams();
@@ -15,21 +17,27 @@ export default function CandidatePortal() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
+  const [activity, setActivity] = useState<{ action: string; details: string; timestamp: string }[]>([]);
 
   useEffect(() => {
     if (!token) { setError('No access token provided. Please use the link sent to your email.'); setLoading(false); return; }
     fetch(`/api/portal?token=${token}`)
       .then(r => { if (!r.ok) throw new Error('Invalid link'); return r.json(); })
-      .then(data => { setCandidate(data); setForm(data); setLoading(false); })
+      .then(data => {
+        setCandidate(data);
+        setForm(data);
+        setLoading(false);
+        if (data.id) {
+          fetch(`/api/candidates/${data.id}?activity=true`).then(r => r.json()).then(setActivity).catch(() => {});
+        }
+      })
       .catch(() => { setError('Invalid or expired access link. Please contact the recruiter.'); setLoading(false); });
   }, [token]);
 
   const handleSave = async () => {
     setSaving(true);
     const res = await fetch(`/api/portal?token=${token}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
     });
     if (res.ok) {
       const updated = await res.json();
@@ -58,33 +66,84 @@ export default function CandidatePortal() {
     { key: 'family_background', label: 'Family Background' },
   ];
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 size={32} className="animate-spin text-navy" />
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <Loader2 size={32} className="animate-spin text-navy" />
+    </div>
+  );
 
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <div className="bg-white rounded-2xl border border-whn-border p-8 max-w-md w-full text-center">
-          <AlertCircle size={48} className="mx-auto mb-4 text-red-500" />
-          <h2 className="text-xl font-bold text-navy mb-2">Access Denied</h2>
-          <p className="text-text-secondary text-sm">{error}</p>
-        </div>
+  if (error) return (
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <div className="bg-white rounded-2xl border border-whn-border p-8 max-w-md w-full text-center">
+        <AlertCircle size={48} className="mx-auto mb-4 text-red-500" />
+        <h2 className="text-xl font-bold text-navy mb-2">Access Denied</h2>
+        <p className="text-text-secondary text-sm">{error}</p>
       </div>
-    );
-  }
+    </div>
+  );
+
+  const currentStatus = candidate?.status || 'New';
+  const currentIndex = PIPELINE.indexOf(currentStatus);
+  const isRejected = currentStatus === 'Rejected';
+  const isOnHold = currentStatus === 'On Hold';
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-2xl mx-auto">
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4"><Logo size="lg" /></div>
-          <h1 className="text-2xl font-bold text-navy mt-4">Your Candidate Profile</h1>
-          <p className="text-text-secondary mt-2">Review and update your information below. Fields marked with * are required.</p>
+          <h1 className="text-2xl font-bold text-navy mt-4">Your Application</h1>
+          <p className="text-text-secondary mt-2">Track your application progress and update your profile</p>
+        </div>
+
+        {/* Status Pipeline */}
+        <div className="bg-white rounded-2xl border border-whn-border p-6 mb-6">
+          <h3 className="font-semibold text-navy mb-4 flex items-center gap-2"><Clock size={18} /> Application Status</h3>
+          {isRejected ? (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
+              <p className="text-red-800 font-medium">Your application is not being considered at this time.</p>
+              <p className="text-red-600 text-sm mt-1">We appreciate your interest and will keep your profile for future opportunities.</p>
+            </div>
+          ) : isOnHold ? (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
+              <p className="text-yellow-800 font-medium">Your application is on hold.</p>
+              <p className="text-yellow-600 text-sm mt-1">Our team will reach out with updates soon.</p>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              {PIPELINE.map((step, i) => {
+                const isCompleted = i < currentIndex;
+                const isCurrent = i === currentIndex;
+                return (
+                  <div key={step} className="flex items-center flex-1">
+                    <div className="flex flex-col items-center flex-1">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold
+                        ${isCompleted ? 'bg-green-500 text-white' : isCurrent ? 'bg-gold text-navy-dark ring-4 ring-gold/20' : 'bg-gray-200 text-gray-500'}`}>
+                        {isCompleted ? <CheckCircle size={16} /> : i + 1}
+                      </div>
+                      <span className={`text-[10px] mt-1 font-medium ${isCurrent ? 'text-navy' : 'text-text-secondary'}`}>{step}</span>
+                    </div>
+                    {i < PIPELINE.length - 1 && <div className={`h-0.5 flex-1 mx-1 ${i < currentIndex ? 'bg-green-500' : 'bg-gray-200'}`} />}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {activity.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-whn-border">
+              <p className="text-xs font-semibold text-text-secondary mb-2">Recent Activity</p>
+              <div className="space-y-2 max-h-[120px] overflow-y-auto">
+                {activity.slice(0, 5).map((a, i) => (
+                  <div key={i} className="flex gap-2 text-xs">
+                    <div className="w-1.5 h-1.5 rounded-full bg-navy mt-1 flex-shrink-0" />
+                    <span className="font-medium text-navy">{a.action}</span>
+                    <span className="text-gray-400">{new Date(a.timestamp).toLocaleDateString()}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {saved && (
@@ -94,6 +153,7 @@ export default function CandidatePortal() {
           </div>
         )}
 
+        {/* Profile Form */}
         <div className="bg-white rounded-2xl border border-whn-border p-6 md:p-8">
           <div className="flex items-center gap-3 mb-6 pb-4 border-b border-whn-border">
             <div className="w-12 h-12 bg-navy/10 rounded-full flex items-center justify-center">
@@ -101,7 +161,7 @@ export default function CandidatePortal() {
             </div>
             <div>
               <h3 className="font-semibold text-navy">{candidate?.full_name || 'Your Profile'}</h3>
-              <p className="text-xs text-text-secondary">Last updated: {candidate?.date_added ? new Date(candidate.date_added).toLocaleDateString() : '-'}</p>
+              <p className="text-xs text-text-secondary">Complete your profile to help us find the best role for you</p>
             </div>
           </div>
 
@@ -114,32 +174,31 @@ export default function CandidatePortal() {
                     {f.label} {f.required && <span className="text-red-500">*</span>}
                     {isEmpty && <span className="text-xs text-amber-600 ml-2">(missing)</span>}
                   </label>
-                  <input
-                    type="text"
-                    value={form[f.key] || ''}
-                    onChange={e => setForm({ ...form, [f.key]: e.target.value })}
-                    className={`w-full mt-1 px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-gold focus:border-gold ${
-                      isEmpty ? 'border-amber-300 bg-amber-50/30' : 'border-whn-border'
-                    }`}
-                  />
+                  <input type="text" value={form[f.key] || ''} onChange={e => setForm({ ...form, [f.key]: e.target.value })}
+                    className={`w-full mt-1 px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-gold focus:border-gold ${isEmpty ? 'border-amber-300 bg-amber-50/30' : 'border-whn-border'}`} />
                 </div>
               );
             })}
           </div>
 
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="w-full mt-6 bg-gold text-navy-dark py-3 rounded-lg text-sm font-bold hover:bg-gold-dark transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-          >
+          <button onClick={handleSave} disabled={saving}
+            className="w-full mt-6 bg-gold text-navy-dark py-3 rounded-lg text-sm font-bold hover:bg-gold-dark disabled:opacity-50 flex items-center justify-center gap-2">
             {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
             {saving ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
 
-        <p className="text-center text-xs text-text-secondary mt-6">
-          Powered by Warehouse Now Talent Acquisition Platform
-        </p>
+        {/* Referral Link */}
+        <div className="mt-6 bg-white rounded-2xl border border-whn-border p-6 text-center">
+          <UserPlus size={24} className="mx-auto mb-2 text-navy" />
+          <h3 className="font-semibold text-navy mb-1">Know Someone Great?</h3>
+          <p className="text-text-secondary text-sm mb-3">Help us grow our team by referring a friend or colleague</p>
+          <a href="/referral" className="inline-flex items-center gap-2 bg-gold text-navy-dark px-6 py-2.5 rounded-lg text-sm font-bold hover:bg-gold-dark">
+            <UserPlus size={16} /> Refer a Candidate
+          </a>
+        </div>
+
+        <p className="text-center text-xs text-text-secondary mt-6">Powered by Warehouse Now Talent Acquisition Platform</p>
       </div>
     </div>
   );

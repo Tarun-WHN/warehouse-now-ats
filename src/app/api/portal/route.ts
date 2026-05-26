@@ -37,7 +37,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
   }
 
-  const updated = updateCandidate(candidate.id, updates);
+  const { candidate: updated } = updateCandidate(candidate.id, updates);
   logActivity(candidate.id, 'Self-Service Update', `Candidate updated their profile via portal`, 'Candidate');
 
   const { resume_text: _rt, portal_token: _pt, ...safe } = (updated || {}) as unknown as Record<string, unknown>;

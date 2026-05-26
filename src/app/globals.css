@@ -18,6 +18,20 @@
   --info: #3B82F6;
 }
 
+.dark {
+  --navy: #C7C3E8;
+  --navy-light: #3D3590;
+  --navy-dark: #0A0827;
+  --gold: #FFD100;
+  --gold-light: #FFE04D;
+  --gold-dark: #E6BC00;
+  --background: #0F0D2E;
+  --foreground: #E2E0F0;
+  --card-bg: #1A1750;
+  --border: #2D2770;
+  --text-secondary: #9B9DC0;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -47,17 +61,20 @@ body {
 ::-webkit-scrollbar-track { background: var(--background); }
 ::-webkit-scrollbar-thumb { background: #C4C7D4; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #9CA0B4; }
+.dark ::-webkit-scrollbar-thumb { background: #4A4580; }
 
 /* Table styles */
 .candidate-table th { position: sticky; top: 0; z-index: 10; }
-.candidate-table tr:hover td { background: #F0F1F8; }
+.candidate-table tr:hover td { background: rgba(27, 20, 100, 0.04); }
+.dark .candidate-table tr:hover td { background: rgba(255, 209, 0, 0.05); }
 
-/* Status badges */
-.status-new { background: #EEF2FF; color: #4F46E5; }
-.status-contacted { background: #FFF7ED; color: #EA580C; }
-.status-interviewing { background: #ECFDF5; color: #059669; }
-.status-hired { background: #F0FDF4; color: #16A34A; }
-.status-rejected { background: #FEF2F2; color: #DC2626; }
+/* Dark mode overrides */
+.dark select, .dark input, .dark textarea {
+  background: var(--card-bg);
+  border-color: var(--border);
+  color: var(--foreground);
+}
+.dark .bg-white { background: var(--card-bg); }
 
 /* Animations */
 @keyframes slideIn {
@@ -77,7 +94,13 @@ body {
   border: 2px dashed var(--border);
   transition: all 0.2s;
 }
-.drop-zone.active {
+.drop-zone.active, .drop-zone:hover {
   border-color: var(--gold);
   background: rgba(255, 209, 0, 0.05);
+}
+
+/* Kanban drag highlight */
+.kanban-drop-active {
+  border-color: var(--gold) !important;
+  background: rgba(255, 209, 0, 0.08) !important;
 }

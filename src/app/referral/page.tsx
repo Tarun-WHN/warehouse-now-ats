@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { Logo } from '@/components/Logo';
-import { Upload, CheckCircle, UserPlus, FileText, Loader2 } from 'lucide-react';
+import { Upload, CheckCircle, UserPlus, FileText, Loader2, Copy, Share2 } from 'lucide-react';
 
 export default function ReferralPage() {
   const [referrerName, setReferrerName] = useState('');
@@ -275,6 +275,31 @@ export default function ReferralPage() {
             )}
           </button>
         </form>
+
+        {/* Share Section */}
+        <div className="mt-6 bg-white rounded-2xl border border-whn-border p-6 text-center">
+          <Share2 size={24} className="mx-auto mb-2 text-navy" />
+          <h3 className="font-semibold text-navy mb-1">Share This Referral Page</h3>
+          <p className="text-text-secondary text-sm mb-3">Send this link to colleagues to refer candidates</p>
+          <div className="flex gap-2 max-w-md mx-auto">
+            <code className="flex-1 text-xs bg-gray-50 border border-whn-border px-3 py-2.5 rounded-lg text-left truncate">
+              {typeof window !== 'undefined' ? window.location.href : '/referral'}
+            </code>
+            <button onClick={() => navigator.clipboard.writeText(window.location.href)}
+              className="bg-gold text-navy-dark px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-gold-dark flex items-center gap-1">
+              <Copy size={14} /> Copy
+            </button>
+          </div>
+          {/* QR Code via external API */}
+          <div className="mt-4">
+            <img
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${typeof window !== 'undefined' ? encodeURIComponent(window.location.href) : '/referral'}`}
+              alt="QR Code for referral page"
+              className="mx-auto w-[120px] h-[120px] rounded-lg"
+            />
+            <p className="text-xs text-text-secondary mt-1">Scan to open referral form</p>
+          </div>
+        </div>
 
         <p className="text-center text-xs text-text-secondary mt-6">
           Powered by Warehouse Now Talent Acquisition Platform
