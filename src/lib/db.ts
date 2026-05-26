@@ -259,13 +259,12 @@ function seedDefaultAdmin(db: Database.Database) {
 function backfillCandidatePasswords(db: Database.Database) {
   try {
     const { hashPassword } = require('./auth');
-    const rows = db.prepare("SELECT id, phone FROM candidates WHERE password_hash IS NULL OR password_hash = ''").all() as { id: string; phone: string }[];
+    const rows = db.prepare("SELECT id FROM candidates WHERE password_hash IS NULL OR password_hash = ''").all() as { id: string }[];
     if (rows.length === 0) return;
+    const hash = hashPassword('welcome123');
     const update = db.prepare('UPDATE candidates SET password_hash = ? WHERE id = ?');
     for (const row of rows) {
-      const rawPhone = (row.phone || '').replace(/\D/g, '');
-      const defaultPwd = rawPhone.length >= 10 ? rawPhone.slice(-10) : 'welcome123';
-      update.run(hashPassword(defaultPwd), row.id);
+      update.run(hash, row.id);
     }
     console.log(`[DB] Backfilled passwords for ${rows.length} candidates`);
   } catch { /* auth not available during edge/build */ }
@@ -333,10 +332,8 @@ export function insertCandidate(candidate: Omit<Candidate, 'id'> & { id?: string
     if (!existingRow?.password_hash) {
       try {
         const { hashPassword: hp } = require('./auth');
-        const rawPhone = (existing.phone || candidate.phone || '').replace(/\D/g, '');
-        const defaultPwd = rawPhone.length >= 10 ? rawPhone.slice(-10) : 'welcome123';
         updates.push('password_hash = ?');
-        values.push(hp(defaultPwd));
+        values.push(hp('welcome123'));
       } catch { /* auth not available during edge/build */ }
     }
 
@@ -349,13 +346,11 @@ export function insertCandidate(candidate: Omit<Candidate, 'id'> & { id?: string
     return db.prepare('SELECT * FROM candidates WHERE id = ?').get(existing.id) as Candidate;
   }
 
-  // Default password = phone number (last 10 digits) or 'welcome123'
+  // Default password = welcome123
   let defaultPasswordHash = '';
   try {
     const { hashPassword: hp } = require('./auth');
-    const rawPhone = (candidate.phone || '').replace(/\D/g, '');
-    const defaultPwd = rawPhone.length >= 10 ? rawPhone.slice(-10) : 'welcome123';
-    defaultPasswordHash = hp(defaultPwd);
+    defaultPasswordHash = hp('welcome123');
   } catch { /* auth not available during edge/build */ }
 
   db.prepare(`

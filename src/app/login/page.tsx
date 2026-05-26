@@ -285,7 +285,7 @@ function LoginForm() {
 
                   <div className="p-3 bg-navy/5 rounded-lg">
                     <p className="text-xs text-text-secondary">
-                      <span className="font-medium text-navy">Default password:</span> Last 10 digits of your phone number, or <code className="bg-gray-200 px-1.5 py-0.5 rounded text-navy text-[11px]">welcome123</code>
+                      <span className="font-medium text-navy">Default password:</span> <code className="bg-gray-200 px-1.5 py-0.5 rounded text-navy text-[11px]">welcome123</code>
                     </p>
                   </div>
                 </form>
