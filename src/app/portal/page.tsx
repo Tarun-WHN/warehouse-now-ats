@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Logo } from '@/components/Logo';
 import { Candidate } from '@/lib/types';
 import { CheckCircle, AlertCircle, Loader2, Save, User, UserPlus, Clock, KeyRound, Eye, EyeOff } from 'lucide-react';
@@ -10,6 +10,7 @@ const PIPELINE = ['New', 'Contacted', 'Screening', 'Interviewing', 'Offered', 'H
 
 export default function CandidatePortal() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const token = searchParams.get('token') || '';
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [loading, setLoading] = useState(true);
@@ -30,20 +31,35 @@ export default function CandidatePortal() {
   const [pwSuccess, setPwSuccess] = useState('');
 
   useEffect(() => {
-    // Works with token in URL or session cookie (password login)
-    const url = token ? `/api/portal?token=${token}` : '/api/portal';
-    fetch(url)
-      .then(r => { if (!r.ok) throw new Error('Unauthorized'); return r.json(); })
-      .then(data => {
-        setCandidate(data);
-        setForm(data);
-        setLoading(false);
-        if (data.id) {
-          fetch(`/api/candidates/${data.id}?activity=true`).then(r => r.json()).then(setActivity).catch(() => {});
+    // If logged in as team member, redirect to dashboard
+    if (!token) {
+      fetch('/api/auth/me').then(r => r.json()).then(data => {
+        if (data.user && data.user.type === 'team') {
+          router.replace('/');
+          return;
         }
-      })
-      .catch(() => { setError('Please log in to access your portal.'); setLoading(false); });
-  }, [token]);
+        // Candidate session — load portal
+        loadPortal();
+      }).catch(() => loadPortal());
+    } else {
+      loadPortal();
+    }
+
+    function loadPortal() {
+      const url = token ? `/api/portal?token=${token}` : '/api/portal';
+      fetch(url)
+        .then(r => { if (!r.ok) throw new Error('Unauthorized'); return r.json(); })
+        .then(data => {
+          setCandidate(data);
+          setForm(data);
+          setLoading(false);
+          if (data.id) {
+            fetch(`/api/candidates/${data.id}?activity=true`).then(r => r.json()).then(setActivity).catch(() => {});
+          }
+        })
+        .catch(() => { setError('Please log in to access your portal.'); setLoading(false); });
+    }
+  }, [token, router]);
 
   const handleSave = async () => {
     setSaving(true);

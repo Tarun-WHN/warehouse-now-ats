@@ -4,7 +4,7 @@ const COOKIE_NAME = 'whn_session';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'whn-ats-secret-key-change-in-production-2024';
 
 // Public routes that don't need auth
-const PUBLIC_ROUTES = ['/login', '/careers', '/referral', '/portal', '/api/auth', '/api/careers', '/api/portal', '/api/upload', '/api/referral-tracker'];
+const PUBLIC_ROUTES = ['/login', '/careers', '/referral', '/api/auth', '/api/careers', '/api/portal', '/api/upload', '/api/referral-tracker'];
 const STATIC_PREFIXES = ['/_next', '/favicon', '/images', '/api/resume'];
 
 // Role-based route access
@@ -55,6 +55,16 @@ export async function middleware(request: NextRequest) {
   // Allow public routes
   if (PUBLIC_ROUTES.some(r => pathname.startsWith(r))) {
     return NextResponse.next();
+  }
+
+  // Portal: allow with token param (legacy link) or valid session
+  if (pathname.startsWith('/portal')) {
+    const hasToken = request.nextUrl.searchParams.has('token') && request.nextUrl.searchParams.get('token') !== '';
+    const hasSession = !!request.cookies.get(COOKIE_NAME)?.value;
+    if (hasToken || hasSession) {
+      return NextResponse.next();
+    }
+    return NextResponse.redirect(new URL('/login', request.url));
   }
 
   // Check session cookie
