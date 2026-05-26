@@ -19,6 +19,7 @@ function getDb(): Database.Database {
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
     initDb(db);
+    backfillCandidatePasswords(db);
   }
   return db;
 }
@@ -254,6 +255,22 @@ function seedDefaultAdmin(db: Database.Database) {
   ).run(crypto.randomUUID(), 'Admin', 'admin@warehousenow.in', 'Admin', '', 'HR & Admin', now, hashPassword('admin123'));
 }
 
+// Backfill passwords for existing candidates that have none
+function backfillCandidatePasswords(db: Database.Database) {
+  try {
+    const { hashPassword } = require('./auth');
+    const rows = db.prepare("SELECT id, phone FROM candidates WHERE password_hash IS NULL OR password_hash = ''").all() as { id: string; phone: string }[];
+    if (rows.length === 0) return;
+    const update = db.prepare('UPDATE candidates SET password_hash = ? WHERE id = ?');
+    for (const row of rows) {
+      const rawPhone = (row.phone || '').replace(/\D/g, '');
+      const defaultPwd = rawPhone.length >= 10 ? rawPhone.slice(-10) : 'welcome123';
+      update.run(hashPassword(defaultPwd), row.id);
+    }
+    console.log(`[DB] Backfilled passwords for ${rows.length} candidates`);
+  } catch { /* auth not available during edge/build */ }
+}
+
 // ═══════════════════════════════════════════════════
 // ─── Candidates ───
 // ═══════════════════════════════════════════════════
@@ -309,6 +326,18 @@ export function insertCandidate(candidate: Omit<Candidate, 'id'> & { id?: string
     if (candidate.job_id) {
       updates.push('job_id = ?');
       values.push(candidate.job_id);
+    }
+
+    // Set password if missing on existing candidate
+    const existingRow = db.prepare('SELECT password_hash FROM candidates WHERE id = ?').get(existing.id) as { password_hash?: string } | undefined;
+    if (!existingRow?.password_hash) {
+      try {
+        const { hashPassword: hp } = require('./auth');
+        const rawPhone = (existing.phone || candidate.phone || '').replace(/\D/g, '');
+        const defaultPwd = rawPhone.length >= 10 ? rawPhone.slice(-10) : 'welcome123';
+        updates.push('password_hash = ?');
+        values.push(hp(defaultPwd));
+      } catch { /* auth not available during edge/build */ }
     }
 
     if (updates.length > 0) {
