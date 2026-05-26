@@ -3,7 +3,7 @@
 import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Logo } from '@/components/Logo';
-import { Loader2, LogIn, User, KeyRound, Mail, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { Loader2, LogIn, User, KeyRound, Mail, Eye, EyeOff, ArrowRight, Phone } from 'lucide-react';
 
 export default function LoginPage() {
   return (
@@ -19,6 +19,7 @@ function LoginForm() {
   const redirect = searchParams.get('redirect') || '/';
 
   const [mode, setMode] = useState<'team' | 'candidate'>('team');
+  const [candidateTab, setCandidateTab] = useState<'password' | 'token'>('password');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [portalToken, setPortalToken] = useState('');
@@ -47,7 +48,32 @@ function LoginForm() {
     router.push(redirect);
   };
 
-  const handleCandidateLogin = async (e: React.FormEvent) => {
+  const handleCandidatePasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: email.trim().toLowerCase(),
+        password,
+        login_type: 'candidate',
+      }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      setError(data.error || 'Login failed');
+      setLoading(false);
+      return;
+    }
+
+    router.push('/portal?token=' + (data.user?.portal_token || ''));
+  };
+
+  const handleCandidateTokenLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
@@ -189,39 +215,117 @@ function LoginForm() {
             </form>
           )}
 
-          {/* Candidate Login Form */}
+          {/* Candidate Login */}
           {mode === 'candidate' && (
-            <form onSubmit={handleCandidateLogin} className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-text-secondary">Access Token</label>
-                <div className="relative mt-1">
-                  <KeyRound size={16} className="absolute left-3 top-3 text-gray-400" />
-                  <input
-                    type="text"
-                    required
-                    value={portalToken}
-                    onChange={e => setPortalToken(e.target.value)}
-                    placeholder="Paste the token from your email"
-                    className="w-full pl-10 pr-3 py-2.5 border border-whn-border rounded-lg text-sm focus:ring-2 focus:ring-gold focus:border-gold"
-                    autoFocus
-                  />
-                </div>
+            <div className="space-y-4">
+              {/* Sub-tabs: Password / Token */}
+              <div className="flex border border-whn-border rounded-lg overflow-hidden">
+                <button
+                  onClick={() => { setCandidateTab('password'); setError(''); }}
+                  className={`flex-1 py-2 text-xs font-medium transition-colors ${
+                    candidateTab === 'password' ? 'bg-navy text-white' : 'bg-white text-text-secondary hover:bg-gray-50'
+                  }`}
+                >
+                  Email / Phone + Password
+                </button>
+                <button
+                  onClick={() => { setCandidateTab('token'); setError(''); }}
+                  className={`flex-1 py-2 text-xs font-medium transition-colors ${
+                    candidateTab === 'token' ? 'bg-navy text-white' : 'bg-white text-text-secondary hover:bg-gray-50'
+                  }`}
+                >
+                  Access Token
+                </button>
               </div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-gold text-navy-dark py-3 rounded-lg text-sm font-bold hover:bg-gold-dark transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {loading ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
-                {loading ? 'Verifying...' : 'Access My Portal'}
-              </button>
 
-              <div className="mt-4 p-4 bg-navy/5 rounded-lg">
-                <p className="text-xs text-text-secondary">
-                  <span className="font-medium text-navy">Candidates:</span> Use the unique token sent to your email to view your application status, update your profile, and refer friends.
-                </p>
-              </div>
-            </form>
+              {/* Password Login */}
+              {candidateTab === 'password' && (
+                <form onSubmit={handleCandidatePasswordLogin} className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium text-text-secondary">Email or Phone</label>
+                    <div className="relative mt-1">
+                      <Phone size={16} className="absolute left-3 top-3 text-gray-400" />
+                      <input
+                        type="text"
+                        required
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        placeholder="Enter your email or phone number"
+                        className="w-full pl-10 pr-3 py-2.5 border border-whn-border rounded-lg text-sm focus:ring-2 focus:ring-gold focus:border-gold"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-text-secondary">Password</label>
+                    <div className="relative mt-1">
+                      <KeyRound size={16} className="absolute left-3 top-3 text-gray-400" />
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        value={password}
+                        onChange={e => setPassword(e.target.value)}
+                        placeholder="Enter your password"
+                        className="w-full pl-10 pr-10 py-2.5 border border-whn-border rounded-lg text-sm focus:ring-2 focus:ring-gold focus:border-gold"
+                      />
+                      <button type="button" onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-3 text-gray-400 hover:text-navy">
+                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-gold text-navy-dark py-3 rounded-lg text-sm font-bold hover:bg-gold-dark transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {loading ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
+                    {loading ? 'Signing in...' : 'Access My Portal'}
+                  </button>
+
+                  <div className="p-3 bg-navy/5 rounded-lg">
+                    <p className="text-xs text-text-secondary">
+                      <span className="font-medium text-navy">Default password:</span> Last 10 digits of your phone number, or <code className="bg-gray-200 px-1.5 py-0.5 rounded text-navy text-[11px]">welcome123</code>
+                    </p>
+                  </div>
+                </form>
+              )}
+
+              {/* Token Login */}
+              {candidateTab === 'token' && (
+                <form onSubmit={handleCandidateTokenLogin} className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium text-text-secondary">Access Token</label>
+                    <div className="relative mt-1">
+                      <KeyRound size={16} className="absolute left-3 top-3 text-gray-400" />
+                      <input
+                        type="text"
+                        required
+                        value={portalToken}
+                        onChange={e => setPortalToken(e.target.value)}
+                        placeholder="Paste the token from your email"
+                        className="w-full pl-10 pr-3 py-2.5 border border-whn-border rounded-lg text-sm focus:ring-2 focus:ring-gold focus:border-gold"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-gold text-navy-dark py-3 rounded-lg text-sm font-bold hover:bg-gold-dark transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {loading ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
+                    {loading ? 'Verifying...' : 'Access My Portal'}
+                  </button>
+
+                  <div className="p-3 bg-navy/5 rounded-lg">
+                    <p className="text-xs text-text-secondary">
+                      <span className="font-medium text-navy">Candidates:</span> Use the unique token sent to your email to access your portal.
+                    </p>
+                  </div>
+                </form>
+              )}
+            </div>
           )}
 
           {/* Footer links */}

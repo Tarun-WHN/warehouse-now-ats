@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Logo } from '@/components/Logo';
 import { Candidate } from '@/lib/types';
-import { CheckCircle, AlertCircle, Loader2, Save, User, UserPlus, Clock } from 'lucide-react';
+import { CheckCircle, AlertCircle, Loader2, Save, User, UserPlus, Clock, KeyRound, Eye, EyeOff } from 'lucide-react';
 
 const PIPELINE = ['New', 'Contacted', 'Screening', 'Interviewing', 'Offered', 'Hired'];
 
@@ -18,6 +18,16 @@ export default function CandidatePortal() {
   const [saved, setSaved] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
   const [activity, setActivity] = useState<{ action: string; details: string; timestamp: string }[]>([]);
+  // Password change
+  const [showPasswordSection, setShowPasswordSection] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPw, setShowCurrentPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwError, setPwError] = useState('');
+  const [pwSuccess, setPwSuccess] = useState('');
 
   useEffect(() => {
     if (!token) { setError('No access token provided. Please use the link sent to your email.'); setLoading(false); return; }
@@ -46,6 +56,29 @@ export default function CandidatePortal() {
       setTimeout(() => setSaved(false), 3000);
     }
     setSaving(false);
+  };
+
+  const handleChangePassword = async () => {
+    setPwError(''); setPwSuccess('');
+    if (!currentPassword) { setPwError('Current password is required'); return; }
+    if (newPassword.length < 6) { setPwError('New password must be at least 6 characters'); return; }
+    if (newPassword !== confirmPassword) { setPwError('Passwords do not match'); return; }
+    setPwLoading(true);
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setPwError(data.error || 'Failed to change password'); }
+      else {
+        setPwSuccess('Password changed successfully!');
+        setCurrentPassword(''); setNewPassword(''); setConfirmPassword('');
+        setTimeout(() => setPwSuccess(''), 4000);
+      }
+    } catch { setPwError('Network error. Please try again.'); }
+    setPwLoading(false);
   };
 
   const fields = [
@@ -186,6 +219,88 @@ export default function CandidatePortal() {
             {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
             {saving ? 'Saving...' : 'Save Changes'}
           </button>
+        </div>
+
+        {/* Change Password */}
+        <div className="mt-6 bg-white rounded-2xl border border-whn-border p-6">
+          <button
+            onClick={() => setShowPasswordSection(!showPasswordSection)}
+            className="w-full flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-navy/10 rounded-full flex items-center justify-center">
+                <KeyRound size={20} className="text-navy" />
+              </div>
+              <div className="text-left">
+                <h3 className="font-semibold text-navy text-sm">Change Password</h3>
+                <p className="text-xs text-text-secondary">Update your login password</p>
+              </div>
+            </div>
+            <span className="text-text-secondary text-lg">{showPasswordSection ? '-' : '+'}</span>
+          </button>
+
+          {showPasswordSection && (
+            <div className="mt-4 pt-4 border-t border-whn-border space-y-3">
+              {pwError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg">{pwError}</div>
+              )}
+              {pwSuccess && (
+                <div className="bg-green-50 border border-green-200 text-green-700 text-sm px-3 py-2 rounded-lg flex items-center gap-2">
+                  <CheckCircle size={14} /> {pwSuccess}
+                </div>
+              )}
+              <div>
+                <label className="text-sm text-text-secondary font-medium">Current Password</label>
+                <div className="relative mt-1">
+                  <input
+                    type={showCurrentPw ? 'text' : 'password'}
+                    value={currentPassword}
+                    onChange={e => setCurrentPassword(e.target.value)}
+                    placeholder="Enter current password"
+                    className="w-full px-3 py-2.5 pr-10 border border-whn-border rounded-lg text-sm focus:ring-2 focus:ring-gold focus:border-gold"
+                  />
+                  <button type="button" onClick={() => setShowCurrentPw(!showCurrentPw)}
+                    className="absolute right-3 top-3 text-gray-400 hover:text-navy">
+                    {showCurrentPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="text-sm text-text-secondary font-medium">New Password</label>
+                <div className="relative mt-1">
+                  <input
+                    type={showNewPw ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    placeholder="At least 6 characters"
+                    className="w-full px-3 py-2.5 pr-10 border border-whn-border rounded-lg text-sm focus:ring-2 focus:ring-gold focus:border-gold"
+                  />
+                  <button type="button" onClick={() => setShowNewPw(!showNewPw)}
+                    className="absolute right-3 top-3 text-gray-400 hover:text-navy">
+                    {showNewPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="text-sm text-text-secondary font-medium">Confirm New Password</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  placeholder="Re-enter new password"
+                  className="w-full mt-1 px-3 py-2.5 border border-whn-border rounded-lg text-sm focus:ring-2 focus:ring-gold focus:border-gold"
+                />
+              </div>
+              <button
+                onClick={handleChangePassword}
+                disabled={pwLoading}
+                className="w-full bg-navy text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-navy-light disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {pwLoading ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
+                {pwLoading ? 'Changing...' : 'Change Password'}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Referral Link */}

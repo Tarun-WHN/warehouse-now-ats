@@ -203,6 +203,7 @@ function initDb(db: Database.Database) {
     `ALTER TABLE candidates ADD COLUMN job_id TEXT DEFAULT ''`,
     `ALTER TABLE email_templates ADD COLUMN category TEXT DEFAULT 'general'`,
     `ALTER TABLE team_members ADD COLUMN password_hash TEXT DEFAULT ''`,
+    `ALTER TABLE candidates ADD COLUMN password_hash TEXT DEFAULT ''`,
   ];
   for (const m of migrations) {
     try { db.exec(m); } catch { /* column exists */ }
@@ -319,13 +320,22 @@ export function insertCandidate(candidate: Omit<Candidate, 'id'> & { id?: string
     return db.prepare('SELECT * FROM candidates WHERE id = ?').get(existing.id) as Candidate;
   }
 
+  // Default password = phone number (last 10 digits) or 'welcome123'
+  let defaultPasswordHash = '';
+  try {
+    const { hashPassword: hp } = require('./auth');
+    const rawPhone = (candidate.phone || '').replace(/\D/g, '');
+    const defaultPwd = rawPhone.length >= 10 ? rawPhone.slice(-10) : 'welcome123';
+    defaultPasswordHash = hp(defaultPwd);
+  } catch { /* auth not available during edge/build */ }
+
   db.prepare(`
     INSERT INTO candidates (id, full_name, phone, email, current_location, current_employer,
       current_designation, previous_employer, previous_designation, date_of_birth,
       preferred_cities, hometown, notice_period, current_ctc, expected_ctc,
       family_background, source, resume_file, resume_filename, date_added, status,
-      referrer_name, referrer_email, notes, resume_text, portal_token, department_id, status_changed_at, job_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      referrer_name, referrer_email, notes, resume_text, portal_token, department_id, status_changed_at, job_id, password_hash)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, candidate.full_name, candidate.phone, candidate.email,
     candidate.current_location, candidate.current_employer, candidate.current_designation,
@@ -336,7 +346,7 @@ export function insertCandidate(candidate: Omit<Candidate, 'id'> & { id?: string
     candidate.date_added, candidate.status || 'New',
     candidate.referrer_name || '', candidate.referrer_email || '',
     candidate.notes || '', candidate.resume_text || '', portalToken,
-    candidate.department_id || '', now, candidate.job_id || ''
+    candidate.department_id || '', now, candidate.job_id || '', defaultPasswordHash
   );
 
   logActivity(id, 'Candidate Added', `Source: ${candidate.source}`);
@@ -422,6 +432,28 @@ export function getCandidateByToken(token: string): Candidate | null {
   const db = getDb();
   if (!token) return null;
   return (db.prepare("SELECT c.*, d.name as department_name FROM candidates c LEFT JOIN departments d ON c.department_id = d.id WHERE c.portal_token = ? AND c.portal_token != ''").get(token) as Candidate) || null;
+}
+
+export function getCandidateByEmail(email: string): (Candidate & { password_hash?: string }) | null {
+  const db = getDb();
+  if (!email) return null;
+  return (db.prepare("SELECT c.*, d.name as department_name FROM candidates c LEFT JOIN departments d ON c.department_id = d.id WHERE c.email = ? AND c.email != ''").get(email) as (Candidate & { password_hash?: string })) || null;
+}
+
+export function getCandidateByPhone(phone: string): (Candidate & { password_hash?: string }) | null {
+  const db = getDb();
+  if (!phone) return null;
+  return (db.prepare("SELECT c.*, d.name as department_name FROM candidates c LEFT JOIN departments d ON c.department_id = d.id WHERE c.phone = ? AND c.phone != ''").get(phone) as (Candidate & { password_hash?: string })) || null;
+}
+
+export function updateCandidatePassword(id: string, passwordHash: string): boolean {
+  const db = getDb();
+  return db.prepare('UPDATE candidates SET password_hash = ? WHERE id = ?').run(passwordHash, id).changes > 0;
+}
+
+export function updateTeamMemberPassword(id: string, passwordHash: string): boolean {
+  const db = getDb();
+  return db.prepare('UPDATE team_members SET password_hash = ? WHERE id = ?').run(passwordHash, id).changes > 0;
 }
 
 export function updateCandidate(id: string, updates: Partial<Candidate>): { candidate: Candidate | null; statusChanged?: { from: string; to: string } } {

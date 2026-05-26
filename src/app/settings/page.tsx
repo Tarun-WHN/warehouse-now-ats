@@ -29,6 +29,10 @@ export default function SettingsPage() {
   const [memberForm, setMemberForm] = useState({ name: '', email: '', role: 'Recruiter' as TeamRole, phone: '', department: '' });
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
+  // Password reset
+  const [resetPwMember, setResetPwMember] = useState<TeamMember | null>(null);
+  const [newPw, setNewPw] = useState('');
+  const [pwResetMsg, setPwResetMsg] = useState('');
   // Departments
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loadingDepts, setLoadingDepts] = useState(false);
@@ -101,6 +105,26 @@ export default function SettingsPage() {
   const handleToggleActive = async (m: TeamMember) => {
     await fetch(`/api/team/${m.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: !m.is_active }) });
     fetchTeam();
+  };
+
+  // Password reset handler
+  const handleResetPassword = async () => {
+    if (!resetPwMember || newPw.length < 6) { setPwResetMsg('Password must be at least 6 characters'); return; }
+    setSaving(true); setPwResetMsg('');
+    const res = await fetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_id: resetPwMember.id, target_type: 'team', new_password: newPw }),
+    });
+    if (res.ok) {
+      setPwResetMsg('Password reset successfully!');
+      setNewPw('');
+      setTimeout(() => { setResetPwMember(null); setPwResetMsg(''); }, 1500);
+    } else {
+      const data = await res.json();
+      setPwResetMsg(data.error || 'Failed to reset password');
+    }
+    setSaving(false);
   };
 
   // Department handlers
@@ -256,11 +280,12 @@ export default function SettingsPage() {
                       </div>
                       <div className="flex items-center gap-3">
                         <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${roleColor(m.role)}`}>{m.role}</span>
-                        <button onClick={() => setEditMember({ ...m })} className="text-gray-400 hover:text-navy p-1"><Edit size={14} /></button>
+                        <button onClick={() => setEditMember({ ...m })} className="text-gray-400 hover:text-navy p-1" title="Edit"><Edit size={14} /></button>
+                        <button onClick={() => { setResetPwMember(m); setNewPw(''); setPwResetMsg(''); }} className="text-gray-400 hover:text-navy p-1" title="Reset Password"><Key size={14} /></button>
                         <button onClick={() => handleToggleActive(m)} className="text-gray-400 hover:text-navy p-1" title={m.is_active ? 'Deactivate' : 'Activate'}>
                           {m.is_active ? <Bell size={14} /> : <CheckCircle size={14} />}
                         </button>
-                        <button onClick={() => handleDeleteMember(m.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={14} /></button>
+                        <button onClick={() => handleDeleteMember(m.id)} className="text-gray-400 hover:text-red-500 p-1" title="Delete"><Trash2 size={14} /></button>
                       </div>
                     </div>
                   ))}
@@ -601,6 +626,35 @@ export default function SettingsPage() {
                 {saving ? 'Saving...' : 'Save Changes'}
               </button>
               <button onClick={() => setEditDept(null)} className="border border-whn-border px-6 py-2 rounded-lg text-sm text-text-secondary hover:bg-gray-50">Cancel</button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Reset Password Modal */}
+      <Modal open={!!resetPwMember} onClose={() => setResetPwMember(null)} title="Reset Password" size="sm">
+        {resetPwMember && (
+          <div className="space-y-4">
+            <p className="text-sm text-text-secondary">
+              Set a new password for <span className="font-semibold text-navy">{resetPwMember.name}</span> ({resetPwMember.email})
+            </p>
+            {pwResetMsg && (
+              <div className={`text-sm px-3 py-2 rounded-lg ${pwResetMsg.includes('successfully') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                {pwResetMsg}
+              </div>
+            )}
+            <div>
+              <label className="text-sm text-text-secondary font-medium">New Password</label>
+              <input type="text" value={newPw} onChange={e => setNewPw(e.target.value)}
+                placeholder="At least 6 characters"
+                className="w-full mt-1 px-3 py-2 border border-whn-border rounded-lg text-sm focus:ring-2 focus:ring-gold" />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button onClick={handleResetPassword} disabled={saving}
+                className="bg-gold text-navy-dark px-6 py-2 rounded-lg text-sm font-semibold hover:bg-gold-dark disabled:opacity-50 flex items-center gap-2">
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <Key size={14} />} Reset Password
+              </button>
+              <button onClick={() => setResetPwMember(null)} className="border border-whn-border px-6 py-2 rounded-lg text-sm text-text-secondary hover:bg-gray-50">Cancel</button>
             </div>
           </div>
         )}
