@@ -70,7 +70,7 @@ function LoginForm() {
       return;
     }
 
-    router.push('/portal?token=' + (data.user?.portal_token || ''));
+    router.push('/portal');
   };
 
   const handleCandidateTokenLogin = async (e: React.FormEvent) => {
@@ -91,7 +91,7 @@ function LoginForm() {
       return;
     }
 
-    router.push('/portal?token=' + portalToken.trim());
+    router.push('/portal');
   };
 
   return (
