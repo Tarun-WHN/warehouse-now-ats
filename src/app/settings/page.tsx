@@ -70,7 +70,7 @@ export default function SettingsPage() {
   };
 
   useEffect(() => {
-    if (activeTab === 'team') fetchTeam();
+    if (activeTab === 'team') { fetchTeam(); fetchDepts(); }
     if (activeTab === 'departments') fetchDepts();
     if (activeTab === 'workflow') fetchRules();
   }, [activeTab]);
@@ -484,8 +484,11 @@ export default function SettingsPage() {
           </div>
           <div>
             <label className="text-sm text-text-secondary font-medium">Department</label>
-            <input type="text" value={memberForm.department} onChange={e => setMemberForm({ ...memberForm, department: e.target.value })}
-              placeholder="e.g. Operations, HR" className="w-full mt-1 px-3 py-2 border border-whn-border rounded-lg text-sm focus:ring-2 focus:ring-gold" />
+            <select value={memberForm.department} onChange={e => setMemberForm({ ...memberForm, department: e.target.value })}
+              className="w-full mt-1 px-3 py-2 border border-whn-border rounded-lg text-sm focus:ring-2 focus:ring-gold">
+              <option value="">Select department</option>
+              {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+            </select>
           </div>
           <div className="flex gap-3 pt-2">
             <button onClick={handleAddMember} disabled={saving}
@@ -527,8 +530,11 @@ export default function SettingsPage() {
             </div>
             <div>
               <label className="text-sm text-text-secondary font-medium">Department</label>
-              <input type="text" value={editMember.department || ''} onChange={e => setEditMember({ ...editMember, department: e.target.value })}
-                className="w-full mt-1 px-3 py-2 border border-whn-border rounded-lg text-sm focus:ring-2 focus:ring-gold" />
+              <select value={editMember.department || ''} onChange={e => setEditMember({ ...editMember, department: e.target.value })}
+                className="w-full mt-1 px-3 py-2 border border-whn-border rounded-lg text-sm focus:ring-2 focus:ring-gold">
+                <option value="">Select department</option>
+                {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+              </select>
             </div>
             <div className="flex gap-3 pt-2">
               <button onClick={handleUpdateMember} disabled={saving}
