@@ -1,23 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCandidateByToken, updateCandidate, logActivity } from '@/lib/db';
+import { getCandidateByToken, getCandidate, updateCandidate, logActivity } from '@/lib/db';
+import { getSession } from '@/lib/auth';
+
+// Resolve candidate from token or session
+async function resolveCandidate(request: NextRequest) {
+  const token = request.nextUrl.searchParams.get('token');
+
+  // Try token first
+  if (token) {
+    const candidate = getCandidateByToken(token);
+    if (candidate) return candidate;
+  }
+
+  // Fall back to session (for password-based login)
+  const session = await getSession();
+  if (session && session.type === 'candidate') {
+    const candidate = getCandidate(session.id);
+    if (candidate) return candidate;
+  }
+
+  return null;
+}
 
 export async function GET(request: NextRequest) {
-  const token = request.nextUrl.searchParams.get('token');
-  if (!token) return NextResponse.json({ error: 'Token required' }, { status: 400 });
-
-  const candidate = getCandidateByToken(token);
-  if (!candidate) return NextResponse.json({ error: 'Invalid or expired link' }, { status: 404 });
+  const candidate = await resolveCandidate(request);
+  if (!candidate) {
+    return NextResponse.json({ error: 'Invalid or expired link' }, { status: 404 });
+  }
 
   const { resume_text: _rt, portal_token: _pt, ...safe } = candidate as unknown as Record<string, unknown>;
   return NextResponse.json(safe);
 }
 
 export async function PATCH(request: NextRequest) {
-  const token = request.nextUrl.searchParams.get('token');
-  if (!token) return NextResponse.json({ error: 'Token required' }, { status: 400 });
-
-  const candidate = getCandidateByToken(token);
-  if (!candidate) return NextResponse.json({ error: 'Invalid or expired link' }, { status: 404 });
+  const candidate = await resolveCandidate(request);
+  if (!candidate) {
+    return NextResponse.json({ error: 'Invalid or expired link' }, { status: 404 });
+  }
 
   const body = await request.json();
 

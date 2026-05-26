@@ -30,9 +30,10 @@ export default function CandidatePortal() {
   const [pwSuccess, setPwSuccess] = useState('');
 
   useEffect(() => {
-    if (!token) { setError('No access token provided. Please use the link sent to your email.'); setLoading(false); return; }
-    fetch(`/api/portal?token=${token}`)
-      .then(r => { if (!r.ok) throw new Error('Invalid link'); return r.json(); })
+    // Works with token in URL or session cookie (password login)
+    const url = token ? `/api/portal?token=${token}` : '/api/portal';
+    fetch(url)
+      .then(r => { if (!r.ok) throw new Error('Unauthorized'); return r.json(); })
       .then(data => {
         setCandidate(data);
         setForm(data);
@@ -41,12 +42,13 @@ export default function CandidatePortal() {
           fetch(`/api/candidates/${data.id}?activity=true`).then(r => r.json()).then(setActivity).catch(() => {});
         }
       })
-      .catch(() => { setError('Invalid or expired access link. Please contact the recruiter.'); setLoading(false); });
+      .catch(() => { setError('Please log in to access your portal.'); setLoading(false); });
   }, [token]);
 
   const handleSave = async () => {
     setSaving(true);
-    const res = await fetch(`/api/portal?token=${token}`, {
+    const url = token ? `/api/portal?token=${token}` : '/api/portal';
+    const res = await fetch(url, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
     });
     if (res.ok) {
@@ -110,7 +112,10 @@ export default function CandidatePortal() {
       <div className="bg-white rounded-2xl border border-whn-border p-8 max-w-md w-full text-center">
         <AlertCircle size={48} className="mx-auto mb-4 text-red-500" />
         <h2 className="text-xl font-bold text-navy mb-2">Access Denied</h2>
-        <p className="text-text-secondary text-sm">{error}</p>
+        <p className="text-text-secondary text-sm mb-4">{error}</p>
+        <a href="/login" className="inline-flex items-center gap-2 bg-gold text-navy-dark px-6 py-2.5 rounded-lg text-sm font-bold hover:bg-gold-dark">
+          Go to Login
+        </a>
       </div>
     </div>
   );
