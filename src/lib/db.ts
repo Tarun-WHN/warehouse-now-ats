@@ -202,6 +202,7 @@ function initDb(db: Database.Database) {
     `ALTER TABLE candidates ADD COLUMN status_changed_at TEXT DEFAULT ''`,
     `ALTER TABLE candidates ADD COLUMN job_id TEXT DEFAULT ''`,
     `ALTER TABLE email_templates ADD COLUMN category TEXT DEFAULT 'general'`,
+    `ALTER TABLE team_members ADD COLUMN password_hash TEXT DEFAULT ''`,
   ];
   for (const m of migrations) {
     try { db.exec(m); } catch { /* column exists */ }
@@ -216,6 +217,10 @@ function initDb(db: Database.Database) {
   // Seed default departments
   const deptCount = db.prepare('SELECT COUNT(*) as count FROM departments').get() as { count: number };
   if (deptCount.count === 0) seedDepartments(db);
+
+  // Seed default admin if no team members exist
+  const teamCount = db.prepare('SELECT COUNT(*) as count FROM team_members').get() as { count: number };
+  if (teamCount.count === 0) seedDefaultAdmin(db);
 }
 
 function seedEmailTemplates(db: Database.Database) {
@@ -237,6 +242,15 @@ function seedDepartments(db: Database.Database) {
   const insert = db.prepare('INSERT INTO departments (id, name, description, head, is_active, created_at) VALUES (?, ?, ?, ?, 1, ?)');
   const now = new Date().toISOString();
   for (const d of depts) insert.run(crypto.randomUUID(), d, '', '', now);
+}
+
+function seedDefaultAdmin(db: Database.Database) {
+  // Default admin: admin@warehousenow.in / admin123 (change immediately in production!)
+  const { hashPassword } = require('./auth');
+  const now = new Date().toISOString();
+  db.prepare(
+    'INSERT INTO team_members (id, name, email, role, phone, department, is_active, created_at, password_hash) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)'
+  ).run(crypto.randomUUID(), 'Admin', 'admin@warehousenow.in', 'Admin', '', 'HR & Admin', now, hashPassword('admin123'));
 }
 
 // ═══════════════════════════════════════════════════
@@ -515,13 +529,18 @@ export function getTeamMember(id: string): TeamMember | null {
   return (db.prepare('SELECT * FROM team_members WHERE id = ?').get(id) as TeamMember) || null;
 }
 
-export function addTeamMember(member: Omit<TeamMember, 'id' | 'created_at'>): TeamMember {
+export function getTeamMemberByEmail(email: string): (TeamMember & { password_hash?: string }) | null {
+  const db = getDb();
+  return (db.prepare('SELECT * FROM team_members WHERE email = ?').get(email) as (TeamMember & { password_hash?: string })) || null;
+}
+
+export function addTeamMember(member: Omit<TeamMember, 'id' | 'created_at'> & { password_hash?: string }): TeamMember {
   const db = getDb();
   const id = crypto.randomUUID();
   const created_at = new Date().toISOString();
   db.prepare(
-    'INSERT INTO team_members (id, name, email, role, phone, department, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, member.name, member.email, member.role, member.phone || '', member.department || '', member.is_active ? 1 : 0, created_at);
+    'INSERT INTO team_members (id, name, email, role, phone, department, is_active, created_at, password_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, member.name, member.email, member.role, member.phone || '', member.department || '', member.is_active ? 1 : 0, created_at, member.password_hash || '');
   return { id, ...member, created_at };
 }
 

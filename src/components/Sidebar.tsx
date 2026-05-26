@@ -5,26 +5,32 @@ import { usePathname } from 'next/navigation';
 import { Logo } from './Logo';
 import {
   LayoutDashboard, Users, Upload, Mail, UserPlus, Settings,
-  ChevronLeft, ChevronRight, Briefcase, Calendar, Globe
+  ChevronLeft, ChevronRight, Briefcase, Calendar, Globe, LogOut
 } from 'lucide-react';
 import { useState } from 'react';
 import { ThemeToggle } from './ThemeToggle';
+import { useAuth } from './AuthProvider';
 
-const navItems = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/candidates', label: 'Candidates', icon: Users },
-  { href: '/jobs', label: 'Jobs', icon: Briefcase },
-  { href: '/interviews', label: 'Interviews', icon: Calendar },
-  { href: '/upload', label: 'Upload Resumes', icon: Upload },
-  { href: '/templates', label: 'Email Templates', icon: Mail },
-  { href: '/careers', label: 'Career Page', icon: Globe },
-  { href: '/referral', label: 'Referral Portal', icon: UserPlus },
-  { href: '/settings', label: 'Settings', icon: Settings },
+const ALL_NAV_ITEMS = [
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ['Admin', 'Recruiter', 'Hiring Manager', 'Viewer'] },
+  { href: '/candidates', label: 'Candidates', icon: Users, roles: ['Admin', 'Recruiter', 'Hiring Manager', 'Viewer'] },
+  { href: '/jobs', label: 'Jobs', icon: Briefcase, roles: ['Admin', 'Recruiter', 'Hiring Manager', 'Viewer'] },
+  { href: '/interviews', label: 'Interviews', icon: Calendar, roles: ['Admin', 'Recruiter', 'Hiring Manager', 'Viewer'] },
+  { href: '/upload', label: 'Upload Resumes', icon: Upload, roles: ['Admin', 'Recruiter'] },
+  { href: '/templates', label: 'Email Templates', icon: Mail, roles: ['Admin', 'Recruiter'] },
+  { href: '/careers', label: 'Career Page', icon: Globe, roles: ['Admin', 'Recruiter', 'Hiring Manager', 'Viewer'] },
+  { href: '/referral', label: 'Referral Portal', icon: UserPlus, roles: ['Admin', 'Recruiter', 'Hiring Manager'] },
+  { href: '/settings', label: 'Settings', icon: Settings, roles: ['Admin', 'Recruiter'] },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const { user, logout } = useAuth();
+
+  const navItems = ALL_NAV_ITEMS.filter(item =>
+    !user?.role || item.roles.includes(user.role)
+  );
 
   return (
     <aside className={`${collapsed ? 'w-16' : 'w-64'} bg-navy-dark min-h-screen flex flex-col transition-all duration-200 relative flex-shrink-0`}>
@@ -71,12 +77,33 @@ export function Sidebar() {
         {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
       </button>
 
+      {/* User info + logout */}
       <div className="p-4 border-t border-navy-light">
+        {user && !collapsed && (
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-8 h-8 bg-gold/20 rounded-full flex items-center justify-center text-xs font-bold text-gold flex-shrink-0">
+              {user.name.charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-200 truncate">{user.name}</p>
+              <p className="text-[10px] text-gray-400">{user.role}</p>
+            </div>
+            <button onClick={logout} className="text-gray-400 hover:text-red-400 p-1" title="Sign out">
+              <LogOut size={16} />
+            </button>
+          </div>
+        )}
+        {user && collapsed && (
+          <div className="flex justify-center mb-3">
+            <button onClick={logout} className="text-gray-400 hover:text-red-400 p-1" title="Sign out">
+              <LogOut size={16} />
+            </button>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           {!collapsed && (
             <div className="text-xs text-gray-400">
               <p className="font-medium text-gray-300">Warehouse Now ATS</p>
-              <p className="mt-1">Talent Acquisition Platform</p>
             </div>
           )}
           <ThemeToggle />

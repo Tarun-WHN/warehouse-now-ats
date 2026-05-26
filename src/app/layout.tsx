@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Sidebar } from "@/components/Sidebar";
-import CommandPalette from "@/components/CommandPalette";
+import { AppShell } from "@/components/AppShell";
 
 export const metadata: Metadata = {
   title: "Warehouse Now ATS - Talent Acquisition Platform",
@@ -22,9 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         ` }} />
       </head>
       <body className="min-h-full flex bg-background text-foreground">
-        <Sidebar />
-        <main className="flex-1 overflow-auto">{children}</main>
-        <CommandPalette />
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );
