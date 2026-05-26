@@ -67,8 +67,8 @@ export default function SettingsPage() {
       fetch('/api/workflow-rules').then(r => r.json()),
       fetch('/api/email').then(r => r.json()),
     ]).then(([r, t]) => {
-      setRules(r);
-      setTemplates(t.templates || t);
+      setRules(Array.isArray(r) ? r : []);
+      setTemplates(Array.isArray(t) ? t : (t.templates || []));
       setLoadingRules(false);
     }).catch(() => setLoadingRules(false));
   };
