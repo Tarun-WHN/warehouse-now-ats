@@ -470,6 +470,13 @@ export function getCandidateByPhone(phone: string): (Candidate & { password_hash
   return (db.prepare("SELECT c.*, d.name as department_name FROM candidates c LEFT JOIN departments d ON c.department_id = d.id WHERE c.phone = ? AND c.phone != ''").get(phone) as (Candidate & { password_hash?: string })) || null;
 }
 
+export function getCandidatesByReferrer(referrerEmail: string): Candidate[] {
+  const db = getDb();
+  return db.prepare(
+    "SELECT c.*, d.name as department_name FROM candidates c LEFT JOIN departments d ON c.department_id = d.id WHERE c.referrer_email = ? AND c.referrer_email != '' ORDER BY c.date_added DESC"
+  ).all(referrerEmail.trim().toLowerCase()) as Candidate[];
+}
+
 export function updateCandidatePassword(id: string, passwordHash: string): boolean {
   const db = getDb();
   return db.prepare('UPDATE candidates SET password_hash = ? WHERE id = ?').run(passwordHash, id).changes > 0;

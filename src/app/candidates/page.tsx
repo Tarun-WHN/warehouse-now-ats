@@ -9,7 +9,7 @@ import { Modal } from '@/components/Modal';
 import {
   Search, Download, Filter, Eye, Trash2, FileText,
   ChevronLeft, ChevronRight, LayoutGrid, Table, Star,
-  Copy, Link, CheckSquare, Square, Mail, Building2, Edit3
+  Copy, Link, CheckSquare, Square, Mail, Building2, Edit3, UserPlus
 } from 'lucide-react';
 import { Remark } from '@/lib/types';
 
@@ -336,7 +336,20 @@ export default function CandidatesPage() {
                       <td className="py-2.5 px-3 text-xs text-text-secondary">{c.current_ctc || '—'}</td>
                       <td className="py-2.5 px-3 text-xs text-text-secondary">{c.notice_period || '—'}</td>
                       <td className="py-2.5 px-3">
-                        <span className="text-[10px] bg-gray-100 text-text-secondary px-1.5 py-0.5 rounded-full font-medium">{c.source}</span>
+                        {c.source === 'Referral' ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[10px] bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded-full font-medium inline-flex items-center gap-0.5 w-fit">
+                              <UserPlus size={9} /> Referral
+                            </span>
+                            {c.referrer_name && (
+                              <span className="text-[10px] text-purple-600 truncate max-w-[100px]" title={`Referred by ${c.referrer_name}`}>
+                                by {c.referrer_name}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-[10px] bg-gray-100 text-text-secondary px-1.5 py-0.5 rounded-full font-medium">{c.source}</span>
+                        )}
                       </td>
                       <td className="py-2.5 px-3">
                         <StatusBadge status={c.status} onChange={s => handleStatusChange(c.id, s)} size="xs" />
@@ -405,7 +418,8 @@ export default function CandidatesPage() {
                 { l: 'Employer', v: detailCandidate.current_employer }, { l: 'Department', v: detailCandidate.department_name },
                 { l: 'CTC', v: detailCandidate.current_ctc }, { l: 'Expected CTC', v: detailCandidate.expected_ctc },
                 { l: 'Notice Period', v: detailCandidate.notice_period }, { l: 'Source', v: detailCandidate.source },
-                { l: 'Referrer', v: detailCandidate.referrer_name }, { l: 'Hometown', v: detailCandidate.hometown },
+                { l: 'Referred By', v: detailCandidate.referrer_name ? `${detailCandidate.referrer_name}${detailCandidate.referrer_email ? ` (${detailCandidate.referrer_email})` : ''}` : undefined },
+                { l: 'Hometown', v: detailCandidate.hometown },
               ].map(f => (
                 <div key={f.l}>
                   <span className="text-text-secondary text-xs">{f.l}</span>
