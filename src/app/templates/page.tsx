@@ -34,7 +34,7 @@ export default function TemplatesPage() {
   const [filterCategory, setFilterCategory] = useState('all');
 
   const fetchTemplates = () => {
-    fetch('/api/email').then(r => r.json()).then(data => { setTemplates(data); setLoading(false); });
+    fetch('/api/email').then(r => r.json()).then(data => { setTemplates(data.templates || data); setLoading(false); });
   };
 
   useEffect(() => { fetchTemplates(); }, []);

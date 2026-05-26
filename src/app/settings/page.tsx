@@ -68,7 +68,7 @@ export default function SettingsPage() {
       fetch('/api/email').then(r => r.json()),
     ]).then(([r, t]) => {
       setRules(r);
-      setTemplates(t);
+      setTemplates(t.templates || t);
       setLoadingRules(false);
     }).catch(() => setLoadingRules(false));
   };
