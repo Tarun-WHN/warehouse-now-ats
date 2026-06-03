@@ -25,11 +25,10 @@ services:
       # Auto-generated, stable across deploys. Used to sign session cookies.
       - key: SESSION_SECRET
         generateValue: true
-      # First-boot admin account. Change the password after first login.
+      # First-boot admin account. Defaults to password "admin123" if
+      # ADMIN_PASSWORD is not set — change it in-app right after first login.
       - key: ADMIN_EMAIL
         value: admin@warehousenow.in
-      - key: ADMIN_PASSWORD
-        sync: false
       # Optional: enables AI resume parsing. Set in the Render dashboard.
       - key: ANTHROPIC_API_KEY
         sync: false
