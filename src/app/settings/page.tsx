@@ -423,11 +423,11 @@ export default function SettingsPage() {
               </div>
               <div>
                 <label className="text-sm text-text-secondary font-medium">From Email</label>
-                <input type="email" placeholder="HR@warehousenow.in" className="w-full mt-1 px-3 py-2 border border-whn-border rounded-lg text-sm focus:ring-2 focus:ring-gold" />
+                <input type="email" placeholder="hr@warehousenow.in" className="w-full mt-1 px-3 py-2 border border-whn-border rounded-lg text-sm focus:ring-2 focus:ring-gold" />
               </div>
               <div>
                 <label className="text-sm text-text-secondary font-medium">Resume Forwarding Address</label>
-                <input type="email" defaultValue="resumes@warehousenow.in" className="w-full mt-1 px-3 py-2 border border-whn-border rounded-lg text-sm focus:ring-2 focus:ring-gold" readOnly />
+                <input type="email" defaultValue="hr@warehousenow.in" className="w-full mt-1 px-3 py-2 border border-whn-border rounded-lg text-sm focus:ring-2 focus:ring-gold" readOnly />
                 <p className="text-xs text-text-secondary mt-1">Resumes forwarded to this address will be auto-parsed.</p>
               </div>
               <button onClick={showSaved} className="bg-gold text-navy-dark px-6 py-2 rounded-lg text-sm font-semibold hover:bg-gold-dark">Save Email Settings</button>

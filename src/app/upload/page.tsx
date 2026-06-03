@@ -284,7 +284,7 @@ export default function UploadPage() {
       <div className="mt-6 bg-navy/5 rounded-xl p-6 border border-navy/10">
         <h3 className="font-semibold text-navy mb-2">Email Forwarding</h3>
         <p className="text-sm text-text-secondary">
-          Forward resumes to <strong className="text-navy">resumes@warehousenow.in</strong> and they will be automatically parsed and added to the candidate database.
+          Forward resumes to <strong className="text-navy">hr@warehousenow.in</strong> and they will be automatically parsed and added to the candidate database.
         </p>
         <p className="text-xs text-text-secondary mt-2">
           Note: Email forwarding requires SMTP integration setup in Settings.
