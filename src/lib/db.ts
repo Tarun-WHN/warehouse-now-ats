@@ -24,6 +24,14 @@ function getDb(): Database.Database {
   return db;
 }
 
+// Consistent online backup of the live SQLite database (safe under WAL mode).
+// Writes a single self-contained .db file to destPath.
+export async function backupDatabase(destPath: string): Promise<void> {
+  await getDb().backup(destPath);
+}
+
+export { DATA_DIR };
+
 function initDb(db: Database.Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS candidates (
