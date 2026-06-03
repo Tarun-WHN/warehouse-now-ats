@@ -7,4 +7,8 @@ export async function register() {
 
   const { scheduleBackups } = await import('./lib/backup');
   scheduleBackups();
+
+  // Inbound resume email ingestion. Self-skips if no IMAP/SMTP credentials.
+  const { scheduleEmailIngest } = await import('./lib/email-ingest');
+  scheduleEmailIngest();
 }

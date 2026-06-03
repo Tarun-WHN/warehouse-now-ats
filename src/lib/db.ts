@@ -205,6 +205,15 @@ function initDb(db: Database.Database) {
       is_active INTEGER DEFAULT 1,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS processed_emails (
+      message_id TEXT PRIMARY KEY,
+      from_address TEXT DEFAULT '',
+      subject TEXT DEFAULT '',
+      attachments INTEGER DEFAULT 0,
+      candidates_added INTEGER DEFAULT 0,
+      processed_at TEXT NOT NULL
+    );
   `);
 
   // Migrations for existing DBs
@@ -299,6 +308,36 @@ export function findDuplicate(phone: string, email: string): Candidate | null {
     if (byEmail) return byEmail;
   }
   return null;
+}
+
+// ─── Inbound email dedupe (resume forwarding) ───
+
+export function isEmailProcessed(messageId: string): boolean {
+  if (!messageId) return false;
+  const row = getDb().prepare('SELECT 1 FROM processed_emails WHERE message_id = ?').get(messageId);
+  return !!row;
+}
+
+export function markEmailProcessed(meta: {
+  message_id: string;
+  from_address?: string;
+  subject?: string;
+  attachments?: number;
+  candidates_added?: number;
+}): void {
+  if (!meta.message_id) return;
+  getDb().prepare(
+    `INSERT OR IGNORE INTO processed_emails
+       (message_id, from_address, subject, attachments, candidates_added, processed_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(
+    meta.message_id,
+    meta.from_address || '',
+    meta.subject || '',
+    meta.attachments || 0,
+    meta.candidates_added || 0,
+    new Date().toISOString(),
+  );
 }
 
 export function insertCandidate(candidate: Omit<Candidate, 'id'> & { id?: string; resume_text?: string }): Candidate {

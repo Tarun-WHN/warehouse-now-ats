@@ -22,6 +22,26 @@ export default function UploadPage() {
   const excelInputRef = useRef<HTMLInputElement>(null);
   const [excelResult, setExcelResult] = useState<{ total_rows: number; imported: number; skipped: number; mapped_fields: string[] } | null>(null);
   const [excelUploading, setExcelUploading] = useState(false);
+  const [checkingInbox, setCheckingInbox] = useState(false);
+  const [inboxMsg, setInboxMsg] = useState('');
+
+  const checkInbox = async () => {
+    setCheckingInbox(true);
+    setInboxMsg('');
+    try {
+      const res = await fetch('/api/email/ingest', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setInboxMsg(data.error || 'Inbox check failed.');
+      } else {
+        setInboxMsg(`Checked inbox: scanned ${data.scanned}, imported ${data.candidatesAdded} candidate(s) from ${data.emailsProcessed} new email(s).`);
+      }
+    } catch {
+      setInboxMsg('Inbox check failed — please try again.');
+    } finally {
+      setCheckingInbox(false);
+    }
+  };
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -284,11 +304,22 @@ export default function UploadPage() {
       <div className="mt-6 bg-navy/5 rounded-xl p-6 border border-navy/10">
         <h3 className="font-semibold text-navy mb-2">Email Forwarding</h3>
         <p className="text-sm text-text-secondary">
-          Forward resumes to <strong className="text-navy">hr@warehousenow.in</strong> and they will be automatically parsed and added to the candidate database.
+          Email resumes to <strong className="text-navy">hr@warehousenow.in</strong> (as attachments) and they are automatically parsed and added to the candidate database. The inbox is checked every few minutes.
         </p>
         <p className="text-xs text-text-secondary mt-2">
-          Note: Email forwarding requires SMTP integration setup in Settings.
+          Supports PDF, DOC, DOCX and TXT attachments. Requires the mailbox credentials (Google App Password) to be configured in the server environment.
         </p>
+        <div className="mt-3 flex items-center gap-3 flex-wrap">
+          <button
+            onClick={checkInbox}
+            disabled={checkingInbox}
+            className="bg-navy text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-navy-dark disabled:opacity-50 flex items-center gap-2"
+          >
+            {checkingInbox ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+            {checkingInbox ? 'Checking…' : 'Check inbox now'}
+          </button>
+          {inboxMsg && <span className="text-xs text-text-secondary">{inboxMsg}</span>}
+        </div>
       </div>
     </div>
   );
