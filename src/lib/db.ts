@@ -247,12 +247,15 @@ function seedDepartments(db: Database.Database) {
 }
 
 function seedDefaultAdmin(db: Database.Database) {
-  // Default admin: admin@warehousenow.in / admin123 (change immediately in production!)
+  // First-boot admin. Credentials come from env (ADMIN_EMAIL / ADMIN_PASSWORD)
+  // with a dev fallback. Change the password after first login.
   const { hashPassword } = require('./auth');
   const now = new Date().toISOString();
+  const adminEmail = (process.env.ADMIN_EMAIL || 'admin@warehousenow.in').toLowerCase();
+  const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
   db.prepare(
     'INSERT INTO team_members (id, name, email, role, phone, department, is_active, created_at, password_hash) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)'
-  ).run(crypto.randomUUID(), 'Admin', 'admin@warehousenow.in', 'Admin', '', 'HR & Admin', now, hashPassword('admin123'));
+  ).run(crypto.randomUUID(), 'Admin', adminEmail, 'Admin', '', 'HR & Admin', now, hashPassword(adminPassword));
 }
 
 // Backfill passwords for existing candidates that have none

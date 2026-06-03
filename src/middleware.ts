@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const COOKIE_NAME = 'whn_session';
-const SESSION_SECRET = process.env.SESSION_SECRET || 'whn-ats-secret-key-change-in-production-2024';
+// Must match the secret resolution in src/lib/auth.ts so tokens verify across runtimes.
+// Resolved lazily (at request time) to avoid throwing during the production build.
+function getSessionSecret(): string {
+  const secret = process.env.SESSION_SECRET;
+  if (secret && secret.length >= 16) return secret;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('SESSION_SECRET environment variable is required in production (min 16 chars).');
+  }
+  return 'whn-ats-dev-only-secret-do-not-use-in-production';
+}
 
 // Public routes that don't need auth
 const PUBLIC_ROUTES = ['/login', '/careers', '/referral', '/api/auth', '/api/careers', '/api/portal', '/api/upload', '/api/referral-tracker'];
@@ -25,7 +34,7 @@ async function verifyTokenEdge(token: string): Promise<{ id: string; email: stri
     const encoder = new TextEncoder();
     const key = await crypto.subtle.importKey(
       'raw',
-      encoder.encode(SESSION_SECRET),
+      encoder.encode(getSessionSecret()),
       { name: 'HMAC', hash: 'SHA-256' },
       false,
       ['sign']

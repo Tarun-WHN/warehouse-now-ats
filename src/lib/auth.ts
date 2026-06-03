@@ -1,8 +1,22 @@
 import crypto from 'crypto';
 import { cookies } from 'next/headers';
 
-const SESSION_SECRET = process.env.SESSION_SECRET || 'whn-ats-secret-key-change-in-production-2024';
 const COOKIE_NAME = 'whn_session';
+
+// Resolved lazily (at request time, not module load) so production builds
+// that lack the env var can still collect page data without throwing.
+function getSessionSecret(): string {
+  const secret = process.env.SESSION_SECRET;
+  if (secret && secret.length >= 16) return secret;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'SESSION_SECRET environment variable is required in production (min 16 chars). ' +
+      'On Render this is auto-generated via render.yaml.'
+    );
+  }
+  // Development-only fallback. Never used in production.
+  return 'whn-ats-dev-only-secret-do-not-use-in-production';
+}
 
 // ─── Password Hashing ───
 
@@ -32,7 +46,7 @@ export interface SessionPayload {
 
 function sign(payload: SessionPayload): string {
   const data = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  const signature = crypto.createHmac('sha256', SESSION_SECRET).update(data).digest('base64url');
+  const signature = crypto.createHmac('sha256', getSessionSecret()).update(data).digest('base64url');
   return `${data}.${signature}`;
 }
 
@@ -40,7 +54,7 @@ function verify(token: string): SessionPayload | null {
   try {
     const [data, signature] = token.split('.');
     if (!data || !signature) return null;
-    const expected = crypto.createHmac('sha256', SESSION_SECRET).update(data).digest('base64url');
+    const expected = crypto.createHmac('sha256', getSessionSecret()).update(data).digest('base64url');
     if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
     const payload = JSON.parse(Buffer.from(data, 'base64url').toString()) as SessionPayload;
     if (payload.exp < Date.now()) return null;
