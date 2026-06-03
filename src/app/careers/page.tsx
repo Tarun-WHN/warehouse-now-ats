@@ -17,6 +17,17 @@ export default function CareersPage() {
     fetch('/api/careers').then(r => r.json()).then(setJobs);
   }, []);
 
+  // Group open jobs by department for the public listing.
+  const jobGroups = (() => {
+    const map = new Map<string, Job[]>();
+    for (const job of jobs) {
+      const dept = job.department_name || 'Other Openings';
+      if (!map.has(dept)) map.set(dept, []);
+      map.get(dept)!.push(job);
+    }
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  })();
+
   const resetForm = () => {
     setForm({ full_name: '', email: '', phone: '', current_designation: '', current_employer: '', current_location: '', notice_period: '', current_ctc: '', expected_ctc: '' });
     setResumeFile(null);
@@ -135,40 +146,49 @@ export default function CareersPage() {
             </div>
           </div>
         ) : (
-          /* Job Listings */
+          /* Job Listings — grouped by department */
           <div>
             <h2 className="text-lg font-bold text-navy mb-4">{jobs.length} Open Position{jobs.length !== 1 ? 's' : ''}</h2>
-            <div className="space-y-4">
-              {jobs.map(job => (
-                <div key={job.id} className="bg-white rounded-xl border border-whn-border p-5 hover:shadow-md transition-shadow flex items-center gap-4">
-                  <div className="w-12 h-12 bg-gold/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Briefcase size={24} className="text-navy" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-navy">{job.title}</h3>
-                    <div className="flex gap-4 text-sm text-text-secondary mt-1 flex-wrap">
-                      {job.department_name && <span className="flex items-center gap-1"><Building2 size={13} />{job.department_name}</span>}
-                      {job.warehouse_site && <span className="flex items-center gap-1"><MapPin size={13} />{job.warehouse_site}</span>}
-                      <span className="flex items-center gap-1"><Users size={13} />{job.num_positions} position{job.num_positions > 1 ? 's' : ''}</span>
-                      {(job.expected_salary_min || job.expected_salary_max) && (
-                        <span className="flex items-center gap-1"><IndianRupee size={13} />{job.expected_salary_min || '0'} - {job.expected_salary_max || ''}</span>
-                      )}
+            {jobGroups.map(([dept, deptJobs]) => (
+              <div key={dept} className="mb-8">
+                <div className="flex items-center gap-2 mb-3">
+                  <Building2 size={16} className="text-navy" />
+                  <h3 className="text-sm font-bold text-navy uppercase tracking-wider">{dept}</h3>
+                  <span className="text-xs text-text-secondary">({deptJobs.length})</span>
+                  <div className="flex-1 border-t border-whn-border ml-2" />
+                </div>
+                <div className="space-y-4">
+                  {deptJobs.map(job => (
+                    <div key={job.id} className="bg-white rounded-xl border border-whn-border p-5 hover:shadow-md transition-shadow flex items-center gap-4">
+                      <div className="w-12 h-12 bg-gold/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Briefcase size={24} className="text-navy" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-bold text-navy">{job.title}</h3>
+                        <div className="flex gap-4 text-sm text-text-secondary mt-1 flex-wrap">
+                          {job.warehouse_site && <span className="flex items-center gap-1"><MapPin size={13} />{job.warehouse_site}</span>}
+                          <span className="flex items-center gap-1"><Users size={13} />{job.num_positions} position{job.num_positions > 1 ? 's' : ''}</span>
+                          {(job.expected_salary_min || job.expected_salary_max) && (
+                            <span className="flex items-center gap-1"><IndianRupee size={13} />{job.expected_salary_min || '0'} - {job.expected_salary_max || ''}</span>
+                          )}
+                        </div>
+                      </div>
+                      <button onClick={() => setSelectedJob(job)}
+                        className="bg-gold text-navy-dark px-5 py-2.5 rounded-lg text-sm font-bold hover:bg-gold-dark flex-shrink-0">
+                        Apply Now
+                      </button>
                     </div>
-                  </div>
-                  <button onClick={() => setSelectedJob(job)}
-                    className="bg-gold text-navy-dark px-5 py-2.5 rounded-lg text-sm font-bold hover:bg-gold-dark flex-shrink-0">
-                    Apply Now
-                  </button>
+                  ))}
                 </div>
-              ))}
-              {jobs.length === 0 && (
-                <div className="text-center py-16 text-text-secondary">
-                  <Briefcase size={48} className="mx-auto mb-3 text-gray-300" />
-                  <p className="font-medium">No open positions at the moment</p>
-                  <p className="text-sm mt-1">Check back soon for new opportunities</p>
-                </div>
-              )}
-            </div>
+              </div>
+            ))}
+            {jobs.length === 0 && (
+              <div className="text-center py-16 text-text-secondary">
+                <Briefcase size={48} className="mx-auto mb-3 text-gray-300" />
+                <p className="font-medium">No open positions at the moment</p>
+                <p className="text-sm mt-1">Check back soon for new opportunities</p>
+              </div>
+            )}
           </div>
         )}
 

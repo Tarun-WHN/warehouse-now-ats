@@ -5,9 +5,10 @@ import { Job, Department, TeamMember, JobStatus, JobPriority } from '@/lib/types
 import { Modal } from '@/components/Modal';
 import {
   Briefcase, Plus, Search, MapPin, Users, IndianRupee,
-  Filter, MoreVertical, Building2, Clock, AlertTriangle
+  MoreVertical, Building2, Clock, AlertTriangle
 } from 'lucide-react';
 import Link from 'next/link';
+import { useAuth } from '@/components/AuthProvider';
 
 const JOB_STATUSES: JobStatus[] = ['Open', 'On Hold', 'Closed', 'Filled'];
 const PRIORITIES: JobPriority[] = ['Low', 'Normal', 'High', 'Urgent'];
@@ -27,6 +28,7 @@ const priorityColors: Record<string, string> = {
 };
 
 export default function JobsPage() {
+  const { user } = useAuth();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -116,7 +118,7 @@ export default function JobsPage() {
             {openJobs} open positions ({totalPositions} total headcount needed)
           </p>
         </div>
-        <button onClick={() => { resetForm(); setShowCreate(true); }}
+        <button onClick={() => { resetForm(); setForm(f => ({ ...f, posted_by: user?.id || '' })); setShowCreate(true); }}
           className="bg-gold text-navy-dark px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-gold-dark flex items-center gap-2">
           <Plus size={16} /> New Job Requisition
         </button>

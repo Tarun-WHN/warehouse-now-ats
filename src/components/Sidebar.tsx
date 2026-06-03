@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { Logo } from './Logo';
 import {
   LayoutDashboard, Users, Upload, Mail, UserPlus, Settings,
-  ChevronLeft, ChevronRight, Briefcase, Calendar, Globe, LogOut
+  ChevronLeft, ChevronRight, Briefcase, Calendar, Globe, LogOut, ClipboardCheck
 } from 'lucide-react';
 import { useState } from 'react';
 import { ThemeToggle } from './ThemeToggle';
@@ -16,6 +16,7 @@ const ALL_NAV_ITEMS = [
   { href: '/candidates', label: 'Candidates', icon: Users, roles: ['Admin', 'Recruiter', 'Hiring Manager', 'Viewer'] },
   { href: '/jobs', label: 'Jobs', icon: Briefcase, roles: ['Admin', 'Recruiter', 'Hiring Manager', 'Viewer'] },
   { href: '/interviews', label: 'Interviews', icon: Calendar, roles: ['Admin', 'Recruiter', 'Hiring Manager', 'Viewer'] },
+  { href: '/reviews', label: 'Reviews', icon: ClipboardCheck, roles: ['Admin', 'Recruiter', 'Hiring Manager', 'Viewer'] },
   { href: '/upload', label: 'Upload Resumes', icon: Upload, roles: ['Admin', 'Recruiter'] },
   { href: '/templates', label: 'Email Templates', icon: Mail, roles: ['Admin', 'Recruiter'] },
   { href: '/careers', label: 'Career Page', icon: Globe, roles: ['Admin', 'Recruiter', 'Hiring Manager', 'Viewer'] },

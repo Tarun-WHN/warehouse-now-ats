@@ -14,6 +14,13 @@ import {
 import { Remark } from '@/lib/types';
 
 const SOURCES = ['Manual Upload', 'Excel Import', 'Referral', 'Career Page', 'Job Portal', 'LinkedIn', 'Walk-in'];
+const OUTCOMES = ['Shortlisted', 'Selected', 'Rejected', 'On Hold'];
+const outcomeColors: Record<string, string> = {
+  Shortlisted: 'bg-blue-100 text-blue-700',
+  Selected: 'bg-green-100 text-green-700',
+  Rejected: 'bg-red-100 text-red-700',
+  'On Hold': 'bg-yellow-100 text-yellow-700',
+};
 
 export default function CandidatesPage() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -44,6 +51,7 @@ export default function CandidatesPage() {
   const [remarkStage, setRemarkStage] = useState('Screening');
   const [remarkRating, setRemarkRating] = useState(0);
   const [remarkComment, setRemarkComment] = useState('');
+  const [remarkOutcome, setRemarkOutcome] = useState('');
 
   // Edit modal
   const [editCandidate, setEditCandidate] = useState<Candidate | null>(null);
@@ -116,6 +124,16 @@ export default function CandidatesPage() {
     fetchCandidates();
   };
 
+  const handleBulkDelete = async () => {
+    if (!confirm(`Delete ${selected.size} selected candidate${selected.size > 1 ? 's' : ''}? This cannot be undone.`)) return;
+    await fetch('/api/candidates/bulk', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete', candidate_ids: Array.from(selected) }),
+    });
+    setSelected(new Set());
+    fetchCandidates();
+  };
+
   const handleBulkEmail = async () => {
     if (!bulkTemplateId) return;
     await fetch('/api/candidates/bulk', {
@@ -140,11 +158,11 @@ export default function CandidatesPage() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         candidate_id: detailCandidate.id, author_name: remarkAuthor || 'Anonymous',
-        author_role: '', rating: remarkRating, comment: remarkComment, stage: remarkStage,
+        author_role: '', rating: remarkRating, comment: remarkComment, stage: remarkStage, outcome: remarkOutcome,
       }),
     });
     fetch(`/api/remarks?candidate_id=${detailCandidate.id}`).then(r => r.json()).then(setRemarks);
-    setRemarkComment(''); setRemarkRating(0);
+    setRemarkComment(''); setRemarkRating(0); setRemarkOutcome('');
   };
 
   const copyPortalLink = (token?: string) => {
@@ -270,7 +288,10 @@ export default function CandidatesPage() {
           </select>
           {bulkTemplateId && <button onClick={handleBulkEmail} className="bg-navy text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"><Mail size={12} />Send</button>}
 
-          <button onClick={() => setSelected(new Set())} className="text-xs text-text-secondary hover:underline ml-auto">Clear selection</button>
+          <button onClick={handleBulkDelete} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-red-100 ml-auto">
+            <Trash2 size={12} />Delete {selected.size}
+          </button>
+          <button onClick={() => setSelected(new Set())} className="text-xs text-text-secondary hover:underline">Clear selection</button>
         </div>
       )}
 
@@ -448,12 +469,17 @@ export default function CandidatesPage() {
           {detailTab === 'remarks' && (
             <div>
               <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                <div className="grid grid-cols-3 gap-3 mb-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
                   <input value={remarkAuthor} onChange={e => setRemarkAuthor(e.target.value)}
                     placeholder="Your name" className="px-2 py-1.5 border border-whn-border rounded-lg text-xs" />
                   <select value={remarkStage} onChange={e => setRemarkStage(e.target.value)}
                     className="px-2 py-1.5 border border-whn-border rounded-lg text-xs">
                     <option>Screening</option><option>Technical</option><option>HR</option><option>Final</option>
+                  </select>
+                  <select value={remarkOutcome} onChange={e => setRemarkOutcome(e.target.value)}
+                    className="px-2 py-1.5 border border-whn-border rounded-lg text-xs">
+                    <option value="">Outcome...</option>
+                    {OUTCOMES.map(o => <option key={o}>{o}</option>)}
                   </select>
                   <div className="flex items-center gap-1">
                     {[1,2,3,4,5].map(s => (
@@ -478,6 +504,7 @@ export default function CandidatesPage() {
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-navy text-sm">{r.author_name}</span>
                         <span className="text-[10px] bg-navy/10 text-navy px-1.5 py-0.5 rounded-full">{r.stage}</span>
+                        {r.outcome && <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${outcomeColors[r.outcome] || 'bg-gray-100 text-gray-600'}`}>{r.outcome}</span>}
                         <div className="flex">{[1,2,3,4,5].map(s => <Star key={s} size={10} className={s <= r.rating ? 'fill-gold text-gold' : 'text-gray-200'} />)}</div>
                       </div>
                       <span className="text-xs text-text-secondary">{new Date(r.created_at).toLocaleDateString()}</span>

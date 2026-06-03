@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
     rating: body.rating || 0,
     comment: body.comment,
     stage: body.stage || '',
+    outcome: body.outcome || '',
   });
   return NextResponse.json(remark, { status: 201 });
 }

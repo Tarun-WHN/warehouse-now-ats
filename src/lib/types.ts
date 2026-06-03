@@ -96,6 +96,8 @@ export interface TeamMember {
   created_at: string;
 }
 
+export type RemarkOutcome = '' | 'Shortlisted' | 'Selected' | 'Rejected' | 'On Hold';
+
 export interface Remark {
   id: string;
   candidate_id: string;
@@ -104,7 +106,9 @@ export interface Remark {
   rating: number;
   comment: string;
   stage: string;
+  outcome?: RemarkOutcome;
   created_at: string;
+  candidate_name?: string;
 }
 
 // Department

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { bulkUpdateCandidateStatus, getCandidate, getEmailTemplate, logActivity } from '@/lib/db';
+import { bulkUpdateCandidateStatus, getCandidate, getEmailTemplate, logActivity, deleteCandidate } from '@/lib/db';
 import { sendEmail, renderTemplate, isEmailConfigured } from '@/lib/mailer';
 
 export async function POST(request: NextRequest) {
@@ -7,6 +7,14 @@ export async function POST(request: NextRequest) {
 
   if (!candidate_ids || !Array.isArray(candidate_ids) || candidate_ids.length === 0) {
     return NextResponse.json({ error: 'candidate_ids array required' }, { status: 400 });
+  }
+
+  if (action === 'delete') {
+    let deleted = 0;
+    for (const id of candidate_ids) {
+      if (deleteCandidate(id)) deleted++;
+    }
+    return NextResponse.json({ processed: candidate_ids.length, deleted });
   }
 
   if (action === 'status_change') {
@@ -44,5 +52,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ processed: candidate_ids.length, sent, failed });
   }
 
-  return NextResponse.json({ error: 'Invalid action. Use: status_change, send_email' }, { status: 400 });
+  return NextResponse.json({ error: 'Invalid action. Use: status_change, send_email, delete' }, { status: 400 });
 }

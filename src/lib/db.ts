@@ -225,6 +225,7 @@ function initDb(db: Database.Database) {
     `ALTER TABLE email_templates ADD COLUMN category TEXT DEFAULT 'general'`,
     `ALTER TABLE team_members ADD COLUMN password_hash TEXT DEFAULT ''`,
     `ALTER TABLE candidates ADD COLUMN password_hash TEXT DEFAULT ''`,
+    `ALTER TABLE remarks ADD COLUMN outcome TEXT DEFAULT ''`,
   ];
   for (const m of migrations) {
     try { db.exec(m); } catch { /* column exists */ }
@@ -615,15 +616,33 @@ export function addRemark(remark: Omit<Remark, 'id' | 'created_at'>): Remark {
   const id = crypto.randomUUID();
   const created_at = new Date().toISOString();
   db.prepare(
-    'INSERT INTO remarks (id, candidate_id, author_name, author_role, rating, comment, stage, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, remark.candidate_id, remark.author_name, remark.author_role, remark.rating, remark.comment, remark.stage, created_at);
-  logActivity(remark.candidate_id, 'Remark Added', `By ${remark.author_name}: ${remark.comment.slice(0, 60)}`, remark.author_name);
+    'INSERT INTO remarks (id, candidate_id, author_name, author_role, rating, comment, stage, outcome, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, remark.candidate_id, remark.author_name, remark.author_role, remark.rating, remark.comment, remark.stage, remark.outcome || '', created_at);
+  const outcomeNote = remark.outcome ? ` [${remark.outcome}]` : '';
+  logActivity(remark.candidate_id, 'Remark Added', `By ${remark.author_name}${outcomeNote}: ${remark.comment.slice(0, 60)}`, remark.author_name);
   return { id, ...remark, created_at };
 }
 
 export function getRemarks(candidateId: string): Remark[] {
   const db = getDb();
   return db.prepare('SELECT * FROM remarks WHERE candidate_id = ? ORDER BY created_at DESC').all(candidateId) as Remark[];
+}
+
+/** All remarks across candidates, joined with the candidate's name. Powers the Reviews tab. */
+export function getAllRemarks(filters?: { outcome?: string; stage?: string; search?: string }): (Remark & { candidate_name: string })[] {
+  const db = getDb();
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (filters?.outcome) { conditions.push('r.outcome = ?'); params.push(filters.outcome); }
+  if (filters?.stage) { conditions.push('r.stage = ?'); params.push(filters.stage); }
+  if (filters?.search) { conditions.push('(c.full_name LIKE ? OR r.author_name LIKE ?)'); params.push(`%${filters.search}%`, `%${filters.search}%`); }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  return db.prepare(`
+    SELECT r.*, c.full_name as candidate_name
+    FROM remarks r
+    LEFT JOIN candidates c ON r.candidate_id = c.id
+    ${where} ORDER BY r.created_at DESC LIMIT 500
+  `).all(...params) as (Remark & { candidate_name: string })[];
 }
 
 export function deleteRemark(id: string): boolean {
