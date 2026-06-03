@@ -8,13 +8,16 @@ import {
 } from './types';
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 const DB_PATH = path.join(DATA_DIR, 'ats.db');
 
 let db: Database.Database | null = null;
 
 function getDb(): Database.Database {
   if (!db) {
+    // Create the data dir lazily at runtime (NOT at module load), so the
+    // production build doesn't try to mkdir a persistent-disk path that
+    // only mounts at runtime.
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
     db = new Database(DB_PATH);
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
