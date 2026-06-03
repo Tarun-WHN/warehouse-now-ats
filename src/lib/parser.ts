@@ -1,4 +1,5 @@
 export interface ParsedResume {
+  is_resume?: boolean;
   full_name: string;
   phone: string;
   email: string;
@@ -54,6 +55,38 @@ const DESIGNATIONS = [
   'inventory', 'dispatch', 'store', 'floor', 'shift', 'forklift', 'picker',
   'packer', 'loader', 'driver', 'delivery', 'helper', 'labour', 'labor'
 ];
+
+// Heuristic resume detector — used as a fallback when AI classification is
+// unavailable (no ANTHROPIC_API_KEY) to keep non-resumes out of the pipeline.
+const RESUME_POSITIVE = [
+  'curriculum vitae', 'resume', 'work experience', 'professional experience',
+  'employment history', 'educational qualification', 'education', 'skills',
+  'career objective', 'objective', 'projects', 'certifications', 'declaration',
+  'references', 'date of birth', 'marital status', 'languages known',
+  'professional summary', 'key skills', 'achievements', 'hobbies',
+];
+const RESUME_NEGATIVE = [
+  'offer letter', 'appointment letter', 'letter of intent', 'employment agreement',
+  'this agreement', 'terms and conditions', 'we are pleased to offer',
+  'pleased to offer you', 'your employment', 'hereby appointed', 'annexure',
+  'ctc break-up', 'ctc breakup', 'salary slip', 'payslip', 'pay slip', 'invoice',
+  'purchase order', 'non-disclosure', 'probation period', 'date of joining',
+  'relieving letter', 'experience certificate', 'to whom it may concern',
+];
+const RESUME_NAME_RE = /(resume|cv|bio[\s_-]?data|curriculum|profile)/i;
+const NON_RESUME_NAME_RE = /(offer|appointment|agreement|contract|pay[\s_-]?slip|salary|invoice|purchase|nda|non[\s_-]?disclosure|relieving|certificate|letter)/i;
+
+/** Rough resume/CV detector from extracted text + filename. */
+export function looksLikeResume(text: string, filename = ''): boolean {
+  const lower = (text || '').toLowerCase();
+  let score = 0;
+  for (const p of RESUME_POSITIVE) if (lower.includes(p)) score += 1;
+  for (const n of RESUME_NEGATIVE) if (lower.includes(n)) score -= 2;
+  if (RESUME_NAME_RE.test(filename)) score += 2;
+  else if (NON_RESUME_NAME_RE.test(filename)) score -= 2;
+  // Needs at least a couple of resume signals and a net-positive balance.
+  return score >= 2;
+}
 
 export function parseResumeText(text: string): ParsedResume {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);

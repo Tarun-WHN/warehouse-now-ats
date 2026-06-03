@@ -1,7 +1,7 @@
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
 import { insertCandidate } from './db';
-import { parseResumeText } from './parser';
+import { parseResumeText, looksLikeResume } from './parser';
 import { parseResumeWithAI } from './ai-parser';
 import type { Candidate } from './types';
 
@@ -52,6 +52,12 @@ export interface IngestOptions {
   referrer_name?: string;
   referrer_email?: string;
   notes?: string;
+  /**
+   * When true, skip (return null) documents that don't look like a real resume
+   * — offer letters, agreements, payslips, etc. Used by the inbound email
+   * ingester so junk attachments aren't imported as candidates.
+   */
+  requireResume?: boolean;
 }
 
 export interface IngestResult {
@@ -59,26 +65,53 @@ export interface IngestResult {
   parsed_fields: string[];
 }
 
+export type IngestSkippedReason = 'not-a-resume' | 'no-contact';
+
+export interface IngestSkipped {
+  skipped: true;
+  reason: IngestSkippedReason;
+  filename: string;
+}
+
 /**
  * Persist a resume file, parse it (AI first, regex fallback), and upsert the
  * candidate. Shared by the manual upload route and the inbound email ingester.
+ *
+ * Returns an IngestSkipped marker (instead of an IngestResult) when
+ * `requireResume` is set and the document is classified as a non-resume or has
+ * no usable identity (no name and no phone/email).
  */
 export async function ingestResume(
   buffer: Buffer,
   originalName: string,
   opts: IngestOptions,
-): Promise<IngestResult> {
+): Promise<IngestResult | IngestSkipped> {
   const uploadDir = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
   await mkdir(uploadDir, { recursive: true });
-
-  const safeName = (originalName || 'resume').replace(/[^a-zA-Z0-9._-]/g, '_');
-  const storedName = `${Date.now()}-${safeName}`;
-  await writeFile(path.join(uploadDir, storedName), buffer);
 
   const text = await extractResumeText(buffer, originalName);
 
   const aiParsed = await parseResumeWithAI(text);
   const parsed = aiParsed || parseResumeText(text);
+
+  if (opts.requireResume) {
+    // Trust the AI classifier when present; otherwise fall back to the heuristic.
+    const isResume =
+      typeof parsed.is_resume === 'boolean'
+        ? parsed.is_resume
+        : looksLikeResume(text, originalName);
+    if (!isResume) {
+      return { skipped: true, reason: 'not-a-resume', filename: originalName };
+    }
+    // A genuine resume should have at least a name or a way to contact them.
+    if (!parsed.full_name && !parsed.phone && !parsed.email) {
+      return { skipped: true, reason: 'no-contact', filename: originalName };
+    }
+  }
+
+  const safeName = (originalName || 'resume').replace(/[^a-zA-Z0-9._-]/g, '_');
+  const storedName = `${Date.now()}-${safeName}`;
+  await writeFile(path.join(uploadDir, storedName), buffer);
 
   const candidate = insertCandidate({
     full_name: parsed.full_name,

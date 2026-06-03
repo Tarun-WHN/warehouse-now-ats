@@ -26,12 +26,13 @@ export interface IngestRunResult {
   scanned: number;
   emailsProcessed: number;
   candidatesAdded: number;
+  skipped: number;
   errors: number;
 }
 
 /** Connect to the inbox once, import resumes from new messages, dedupe by Message-ID. */
 export async function pollInboxOnce(): Promise<IngestRunResult> {
-  const result: IngestRunResult = { scanned: 0, emailsProcessed: 0, candidatesAdded: 0, errors: 0 };
+  const result: IngestRunResult = { scanned: 0, emailsProcessed: 0, candidatesAdded: 0, skipped: 0, errors: 0 };
 
   if (!isEmailIngestConfigured()) {
     throw new Error('Email ingest not configured. Set SMTP_USER/SMTP_PASS (or IMAP_USER/IMAP_PASS).');
@@ -53,10 +54,26 @@ export async function pollInboxOnce(): Promise<IngestRunResult> {
     try {
       const since = new Date(Date.now() - SINCE_DAYS * 86400000);
       const uids = (await client.search({ since }, { uid: true })) || [];
-      // Newest first, capped so a backlog can't blow up memory/time in one run.
-      const batch = uids.slice(-MAX_PER_POLL).reverse();
 
-      for (const uid of batch) {
+      // Cheap envelope-only pass (newest first) so we can skip already-processed
+      // emails BEFORE capping. This stops a burst of newer mail from burying an
+      // older, still-unprocessed CV behind the per-poll limit.
+      const newestFirst = [...uids].sort((a, b) => b - a);
+      const pending: number[] = [];
+      for (const uid of newestFirst) {
+        if (pending.length >= MAX_PER_POLL) break;
+        try {
+          const env = await client.fetchOne(String(uid), { envelope: true }, { uid: true });
+          const messageId = (env && env.envelope?.messageId) || `${MAILBOX}:${uid}`;
+          if (isEmailProcessed(messageId)) continue;
+          pending.push(uid);
+        } catch {
+          // If the envelope fetch fails, still queue it for a full attempt below.
+          pending.push(uid);
+        }
+      }
+
+      for (const uid of pending) {
         result.scanned++;
         try {
           const msg = await client.fetchOne(String(uid), { source: true, envelope: true }, { uid: true });
@@ -79,16 +96,30 @@ export async function pollInboxOnce(): Promise<IngestRunResult> {
               isResumeAttachment(a.filename || '', a.contentType),
           );
 
+          if (attachments.length > 0) {
+            console.log(
+              `[email-ingest] "${subject}" from ${fromAddress} — ${attachments.length} resume-like attachment(s): ${attachments
+                .map((a) => a.filename || 'unnamed')
+                .join(', ')}`,
+            );
+          }
+
           let added = 0;
           for (const att of attachments) {
             try {
-              await ingestResume(att.content as Buffer, att.filename || 'resume', {
+              const r = await ingestResume(att.content as Buffer, att.filename || 'resume', {
                 source: 'Email Inbox',
                 referrer_name: fromName,
                 referrer_email: fromAddress,
                 notes: `Auto-imported from email "${subject}" (${fromAddress})`,
+                requireResume: true,
               });
-              added++;
+              if ('skipped' in r) {
+                result.skipped++;
+                console.log(`[email-ingest] skipped "${att.filename}" (${r.reason}).`);
+              } else {
+                added++;
+              }
             } catch (e) {
               result.errors++;
               console.error('[email-ingest] failed to ingest attachment:', (e as Error).message);
@@ -139,7 +170,7 @@ export function scheduleEmailIngest(): void {
     pollInboxOnce()
       .then((r) => {
         if (r.scanned > 0 || r.candidatesAdded > 0) {
-          console.log(`[email-ingest] scanned=${r.scanned} emails=${r.emailsProcessed} candidates+=${r.candidatesAdded} errors=${r.errors}`);
+          console.log(`[email-ingest] scanned=${r.scanned} emails=${r.emailsProcessed} candidates+=${r.candidatesAdded} skipped=${r.skipped} errors=${r.errors}`);
         }
       })
       .catch((e) => console.error('[email-ingest] poll failed:', e instanceof Error ? e.message : e));

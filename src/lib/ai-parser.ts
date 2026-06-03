@@ -1,8 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { ParsedResume } from './parser';
 
-const SYSTEM_PROMPT = `You are a resume parser for an Indian warehouse/logistics recruitment company. Extract structured fields from the resume text provided. Return ONLY a valid JSON object with these exact keys:
+const SYSTEM_PROMPT = `You are a resume parser for an Indian warehouse/logistics recruitment company. Extract structured fields from the document text provided. Return ONLY a valid JSON object with these exact keys:
 
+- is_resume: true ONLY if this document is a person's resume / CV / bio-data (a job seeker describing their own experience, education and skills). Return false for ANY other document type — offer letters, appointment letters, employment agreements/contracts, relieving or experience certificates, salary slips/payslips, invoices, purchase orders, NDAs, marketing emails, newsletters, or anything that is not a candidate's own resume.
 - full_name: candidate's full name
 - phone: phone number (Indian format preferred, digits only with optional +91)
 - email: email address
@@ -54,6 +55,7 @@ export async function parseResumeWithAI(text: string): Promise<ParsedResume | nu
     const parsed = JSON.parse(jsonStr);
 
     return {
+      is_resume: parsed.is_resume !== false, // default to true unless the model is sure it isn't
       full_name: parsed.full_name || '',
       phone: parsed.phone || '',
       email: parsed.email || '',

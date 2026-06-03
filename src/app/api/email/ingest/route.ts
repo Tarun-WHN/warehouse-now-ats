@@ -25,7 +25,11 @@ export async function POST() {
   }
   try {
     const result = await pollInboxOnce();
-    return NextResponse.json({ success: true, ...result });
+    return NextResponse.json({
+      success: true,
+      ...result,
+      message: `Scanned ${result.scanned} new email(s): added ${result.candidatesAdded} candidate(s), skipped ${result.skipped} non-resume attachment(s).`,
+    });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
