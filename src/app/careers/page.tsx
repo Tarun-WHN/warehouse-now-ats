@@ -3,25 +3,32 @@
 import { useState, useEffect } from 'react';
 import { Job } from '@/lib/types';
 import { Logo } from '@/components/Logo';
-import { MapPin, IndianRupee, Users, Briefcase, CheckCircle, Loader2, Building2, Send } from 'lucide-react';
+import { MapPin, IndianRupee, Users, Briefcase, CheckCircle, Loader2, Building2, Send, Paperclip, X } from 'lucide-react';
 
 export default function CareersPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [applying, setApplying] = useState(false);
   const [applied, setApplied] = useState(false);
-  const [form, setForm] = useState({ full_name: '', email: '', phone: '', current_designation: '', current_location: '', notice_period: '', current_ctc: '', expected_ctc: '' });
+  const [form, setForm] = useState({ full_name: '', email: '', phone: '', current_designation: '', current_employer: '', current_location: '', notice_period: '', current_ctc: '', expected_ctc: '' });
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
 
   useEffect(() => {
     fetch('/api/careers').then(r => r.json()).then(setJobs);
   }, []);
 
+  const resetForm = () => {
+    setForm({ full_name: '', email: '', phone: '', current_designation: '', current_employer: '', current_location: '', notice_period: '', current_ctc: '', expected_ctc: '' });
+    setResumeFile(null);
+  };
+
   const handleApply = async () => {
     setApplying(true);
-    await fetch('/api/careers/apply', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, job_id: selectedJob?.id }),
-    });
+    const data = new FormData();
+    Object.entries(form).forEach(([k, v]) => data.append(k, v));
+    if (selectedJob?.id) data.append('job_id', selectedJob.id);
+    if (resumeFile) data.append('resume', resumeFile);
+    await fetch('/api/careers/apply', { method: 'POST', body: data });
     setApplying(false);
     setApplied(true);
   };
@@ -38,7 +45,7 @@ export default function CareersPage() {
             Thank you, {form.full_name}! Your application for {selectedJob?.title} has been received.
             Our recruitment team will review your profile and reach out soon.
           </p>
-          <button onClick={() => { setApplied(false); setSelectedJob(null); setForm({ full_name: '', email: '', phone: '', current_designation: '', current_location: '', notice_period: '', current_ctc: '', expected_ctc: '' }); }}
+          <button onClick={() => { setApplied(false); setSelectedJob(null); resetForm(); }}
             className="bg-gold text-navy-dark px-6 py-2.5 rounded-lg text-sm font-semibold hover:bg-gold-dark">
             Browse More Jobs
           </button>
@@ -80,6 +87,7 @@ export default function CareersPage() {
                   { key: 'email', label: 'Email *', ph: 'your@email.com' },
                   { key: 'phone', label: 'Phone *', ph: '+91 98765 43210' },
                   { key: 'current_designation', label: 'Current Role', ph: 'e.g. Warehouse Manager' },
+                  { key: 'current_employer', label: 'Current Company', ph: 'e.g. Acme Logistics' },
                   { key: 'current_location', label: 'Current City', ph: 'e.g. Mumbai' },
                   { key: 'notice_period', label: 'Notice Period', ph: 'e.g. 30 days' },
                   { key: 'current_ctc', label: 'Current CTC', ph: 'e.g. 6 LPA' },
@@ -92,6 +100,34 @@ export default function CareersPage() {
                   </div>
                 ))}
               </div>
+
+              {/* Resume / CV upload (optional) */}
+              <div className="mt-4">
+                <label className="text-sm text-text-secondary font-medium">Resume / CV <span className="text-gray-400">(optional)</span></label>
+                {resumeFile ? (
+                  <div className="mt-1 flex items-center justify-between gap-3 px-3 py-2.5 border border-whn-border rounded-lg bg-navy/5">
+                    <span className="flex items-center gap-2 text-sm text-navy min-w-0">
+                      <Paperclip size={16} className="flex-shrink-0" />
+                      <span className="truncate">{resumeFile.name}</span>
+                    </span>
+                    <button type="button" onClick={() => setResumeFile(null)} className="text-text-secondary hover:text-navy flex-shrink-0">
+                      <X size={16} />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="mt-1 flex items-center gap-2 px-3 py-2.5 border border-dashed border-whn-border rounded-lg text-sm text-text-secondary cursor-pointer hover:border-gold hover:bg-gold/5 transition-colors">
+                    <Paperclip size={16} />
+                    <span>Attach your CV (PDF, DOC, DOCX or TXT)</span>
+                    <input
+                      type="file"
+                      accept=".pdf,.doc,.docx,.txt"
+                      className="hidden"
+                      onChange={e => setResumeFile(e.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                )}
+              </div>
+
               <button onClick={handleApply} disabled={applying || !form.full_name || (!form.email && !form.phone)}
                 className="mt-6 bg-gold text-navy-dark px-8 py-3 rounded-lg text-sm font-bold hover:bg-gold-dark disabled:opacity-50 flex items-center gap-2">
                 {applying ? <><Loader2 size={16} className="animate-spin" />Submitting...</> : <><Send size={16} />Submit Application</>}
