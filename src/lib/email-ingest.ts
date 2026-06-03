@@ -15,6 +15,19 @@ const SINCE_DAYS = Number(process.env.EMAIL_INGEST_SINCE_DAYS || 3);
 const MAX_PER_POLL = Number(process.env.EMAIL_INGEST_MAX_PER_POLL || 25);
 const MAX_ATTACHMENT_BYTES = Number(process.env.EMAIL_MAX_ATTACHMENT_MB || 15) * 1024 * 1024;
 
+// Once-a-day deep sweep: re-scans a wider window with a higher cap so a busy
+// day can't leave any unprocessed resume behind. Dedupe by Message-ID makes the
+// overlap with the frequent poll harmless.
+const DAILY_SWEEP = (process.env.EMAIL_DAILY_SWEEP ?? 'true') !== 'false';
+const DAILY_SWEEP_HOUR = Number(process.env.EMAIL_DAILY_SWEEP_HOUR ?? 6); // server (UTC) hour
+const DAILY_SINCE_DAYS = Number(process.env.EMAIL_DAILY_SINCE_DAYS || 7);
+const DAILY_MAX = Number(process.env.EMAIL_DAILY_MAX || 200);
+
+// If the email's SUBJECT clearly says it's a resume/CV, trust the human signal
+// and import the attachment even if the document classifier is unsure.
+const SUBJECT_RESUME_RE =
+  /(resume|\bcv\b|bio[\s_-]?data|curriculum\s*vitae|job\s*application|applying\s*for|application\s*for|profile)/i;
+
 let scheduled = false;
 let running = false;
 
@@ -30,9 +43,19 @@ export interface IngestRunResult {
   errors: number;
 }
 
+export interface PollOptions {
+  /** How many days back to search the inbox. */
+  sinceDays?: number;
+  /** Max number of unprocessed emails to handle in this run. */
+  maxPerPoll?: number;
+}
+
 /** Connect to the inbox once, import resumes from new messages, dedupe by Message-ID. */
-export async function pollInboxOnce(): Promise<IngestRunResult> {
+export async function pollInboxOnce(opts: PollOptions = {}): Promise<IngestRunResult> {
   const result: IngestRunResult = { scanned: 0, emailsProcessed: 0, candidatesAdded: 0, skipped: 0, errors: 0 };
+
+  const sinceDays = opts.sinceDays ?? SINCE_DAYS;
+  const maxPerPoll = opts.maxPerPoll ?? MAX_PER_POLL;
 
   if (!isEmailIngestConfigured()) {
     throw new Error('Email ingest not configured. Set SMTP_USER/SMTP_PASS (or IMAP_USER/IMAP_PASS).');
@@ -52,7 +75,7 @@ export async function pollInboxOnce(): Promise<IngestRunResult> {
     await client.connect();
     const lock = await client.getMailboxLock(MAILBOX);
     try {
-      const since = new Date(Date.now() - SINCE_DAYS * 86400000);
+      const since = new Date(Date.now() - sinceDays * 86400000);
       const uids = (await client.search({ since }, { uid: true })) || [];
 
       // Cheap envelope-only pass (newest first) so we can skip already-processed
@@ -61,7 +84,7 @@ export async function pollInboxOnce(): Promise<IngestRunResult> {
       const newestFirst = [...uids].sort((a, b) => b - a);
       const pending: number[] = [];
       for (const uid of newestFirst) {
-        if (pending.length >= MAX_PER_POLL) break;
+        if (pending.length >= maxPerPoll) break;
         try {
           const env = await client.fetchOne(String(uid), { envelope: true }, { uid: true });
           const messageId = (env && env.envelope?.messageId) || `${MAILBOX}:${uid}`;
@@ -96,11 +119,16 @@ export async function pollInboxOnce(): Promise<IngestRunResult> {
               isResumeAttachment(a.filename || '', a.contentType),
           );
 
+          // A subject that explicitly says "Resume"/"CV"/"job application" is a
+          // strong human signal — trust it and import even if the document
+          // classifier is unsure (avoids missing genuine CVs).
+          const subjectSaysResume = SUBJECT_RESUME_RE.test(subject);
+
           if (attachments.length > 0) {
             console.log(
               `[email-ingest] "${subject}" from ${fromAddress} — ${attachments.length} resume-like attachment(s): ${attachments
                 .map((a) => a.filename || 'unnamed')
-                .join(', ')}`,
+                .join(', ')}${subjectSaysResume ? ' [subject indicates resume]' : ''}`,
             );
           }
 
@@ -112,7 +140,7 @@ export async function pollInboxOnce(): Promise<IngestRunResult> {
                 referrer_name: fromName,
                 referrer_email: fromAddress,
                 notes: `Auto-imported from email "${subject}" (${fromAddress})`,
-                requireResume: true,
+                requireResume: !subjectSaysResume,
               });
               if ('skipped' in r) {
                 result.skipped++;
@@ -179,4 +207,28 @@ export function scheduleEmailIngest(): void {
   setTimeout(tick, 45_000); // shortly after boot
   setInterval(tick, POLL_MINUTES * 60 * 1000);
   console.log(`[email-ingest] scheduled every ${POLL_MINUTES}m from ${IMAP_HOST} (${MAILBOX}).`);
+
+  // Once-a-day deep sweep with a wider lookback so nothing is ever missed.
+  if (DAILY_SWEEP) {
+    const deepSweep = () => {
+      console.log(`[email-ingest] running daily deep sweep (last ${DAILY_SINCE_DAYS} days, up to ${DAILY_MAX} emails)...`);
+      pollInboxOnce({ sinceDays: DAILY_SINCE_DAYS, maxPerPoll: DAILY_MAX })
+        .then((r) =>
+          console.log(`[email-ingest] daily sweep: scanned=${r.scanned} emails=${r.emailsProcessed} candidates+=${r.candidatesAdded} skipped=${r.skipped} errors=${r.errors}`),
+        )
+        .catch((e) => console.error('[email-ingest] daily sweep failed:', e instanceof Error ? e.message : e));
+    };
+
+    // Fire at the next DAILY_SWEEP_HOUR (server/UTC), then every 24h.
+    const now = new Date();
+    const next = new Date(now);
+    next.setUTCHours(DAILY_SWEEP_HOUR, 0, 0, 0);
+    if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+    const delay = next.getTime() - now.getTime();
+    setTimeout(() => {
+      deepSweep();
+      setInterval(deepSweep, 24 * 60 * 60 * 1000);
+    }, delay);
+    console.log(`[email-ingest] daily deep sweep scheduled for ${String(DAILY_SWEEP_HOUR).padStart(2, '0')}:00 UTC.`);
+  }
 }
