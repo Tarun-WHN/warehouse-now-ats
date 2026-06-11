@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import { Candidate, CandidateStatus, Department, EmailTemplate } from '@/lib/types';
 import { StatusBadge, STATUSES } from '@/components/StatusBadge';
 import { KanbanBoard } from '@/components/KanbanBoard';
@@ -8,8 +8,8 @@ import { TimeInStageBadge } from '@/components/TimeInStageBadge';
 import { Modal } from '@/components/Modal';
 import {
   Search, Download, Filter, Eye, Trash2, FileText,
-  ChevronLeft, ChevronRight, LayoutGrid, Table, Star,
-  Copy, Link, CheckSquare, Square, Mail, Building2, Edit3, UserPlus
+  ChevronLeft, ChevronRight, ChevronDown, LayoutGrid, Table, Star,
+  Copy, Link, CheckSquare, Square, Mail, Building2, Edit3, UserPlus, MapPin
 } from 'lucide-react';
 import { Remark } from '@/lib/types';
 
@@ -30,6 +30,8 @@ export default function CandidatesPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [viewMode, setViewMode] = useState<'table' | 'kanban'>('table');
+  const [grouped, setGrouped] = useState(true);
+  const [collapsedLocs, setCollapsedLocs] = useState<Set<string>>(new Set());
 
   // Column filters
   const [filters, setFilters] = useState<Record<string, string>>({});
@@ -43,6 +45,9 @@ export default function CandidatesPage() {
   // Detail modal
   const [detailCandidate, setDetailCandidate] = useState<Candidate | null>(null);
   const [detailTab, setDetailTab] = useState<'info' | 'resume' | 'remarks' | 'activity'>('info');
+  const [editingInfo, setEditingInfo] = useState(false);
+  const [infoBackup, setInfoBackup] = useState<Candidate | null>(null);
+  const [savingInfo, setSavingInfo] = useState(false);
   const [remarks, setRemarks] = useState<Remark[]>([]);
   const [activity, setActivity] = useState<{ action: string; details: string; timestamp: string; performed_by: string }[]>([]);
 
@@ -148,8 +153,33 @@ export default function CandidatesPage() {
   const openDetail = async (c: Candidate) => {
     setDetailCandidate(c);
     setDetailTab('info');
+    setEditingInfo(false);
+    setInfoBackup(null);
     fetch(`/api/remarks?candidate_id=${c.id}`).then(r => r.json()).then(setRemarks);
     fetch(`/api/candidates/${c.id}?activity=true`).then(r => r.json()).then(setActivity);
+  };
+
+  const startEditInfo = () => {
+    if (!detailCandidate) return;
+    setInfoBackup(detailCandidate);
+    setEditingInfo(true);
+  };
+  const cancelEditInfo = () => {
+    if (infoBackup) setDetailCandidate(infoBackup);
+    setInfoBackup(null);
+    setEditingInfo(false);
+  };
+  const saveInfo = async () => {
+    if (!detailCandidate) return;
+    setSavingInfo(true);
+    await fetch(`/api/candidates/${detailCandidate.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(detailCandidate),
+    });
+    setSavingInfo(false);
+    setEditingInfo(false);
+    setInfoBackup(null);
+    fetchCandidates();
   };
 
   const submitRemark = async () => {
@@ -182,6 +212,111 @@ export default function CandidatesPage() {
 
   const totalPages = Math.ceil(total / perPage);
 
+  // Group the current page of candidates by location, then by department within each location.
+  const groupedCandidates = useMemo(() => {
+    const locMap = new Map<string, Map<string, Candidate[]>>();
+    for (const c of candidates) {
+      const loc = (c.current_location || '').trim() || 'No Location';
+      const dept = (c.department_name || '').trim() || 'No Department';
+      if (!locMap.has(loc)) locMap.set(loc, new Map());
+      const deptMap = locMap.get(loc)!;
+      if (!deptMap.has(dept)) deptMap.set(dept, []);
+      deptMap.get(dept)!.push(c);
+    }
+    const sortKeys = (a: string, b: string) => {
+      // Push the "No ..." buckets to the bottom, otherwise alphabetical.
+      const aNo = a.startsWith('No '); const bNo = b.startsWith('No ');
+      if (aNo !== bNo) return aNo ? 1 : -1;
+      return a.localeCompare(b);
+    };
+    return Array.from(locMap.entries())
+      .sort((a, b) => sortKeys(a[0], b[0]))
+      .map(([loc, deptMap]) => ({
+        loc,
+        count: Array.from(deptMap.values()).reduce((n, arr) => n + arr.length, 0),
+        depts: Array.from(deptMap.entries())
+          .sort((a, b) => sortKeys(a[0], b[0]))
+          .map(([dept, list]) => ({ dept, list })),
+      }));
+  }, [candidates]);
+
+  const toggleLoc = (loc: string) => {
+    setCollapsedLocs(prev => {
+      const next = new Set(prev);
+      next.has(loc) ? next.delete(loc) : next.add(loc);
+      return next;
+    });
+  };
+
+  const renderRow = (c: Candidate) => (
+    <tr key={c.id} className={`border-t border-whn-border hover:bg-gray-50/50 ${selected.has(c.id) ? 'bg-gold/5' : ''}`}>
+      <td className="py-2.5 px-3">
+        <button onClick={() => toggleSelect(c.id)} className="text-gray-400 hover:text-navy">
+          {selected.has(c.id) ? <CheckSquare size={16} className="text-gold" /> : <Square size={16} />}
+        </button>
+      </td>
+      <td className="py-2.5 px-3">
+        <button onClick={() => openDetail(c)} className="font-semibold text-navy text-sm hover:underline text-left">{c.full_name || '—'}</button>
+      </td>
+      <td className="py-2.5 px-3 text-xs text-text-secondary">
+        <div>{c.phone || '—'}</div>
+        <div className="truncate max-w-[140px]">{c.email || '—'}</div>
+      </td>
+      <td className="py-2.5 px-3 text-xs">
+        <div className="font-medium text-navy">{c.current_designation || '—'}</div>
+        <div className="text-text-secondary">{c.current_employer || ''}</div>
+      </td>
+      <td className="py-2.5 px-3 text-xs">
+        {c.department_name ? (
+          <span className="inline-flex items-center gap-1 bg-navy/5 text-navy px-1.5 py-0.5 rounded-full text-[10px] font-medium">
+            <Building2 size={9} />{c.department_name}
+          </span>
+        ) : '—'}
+      </td>
+      <td className="py-2.5 px-3 text-xs text-text-secondary">{c.current_location || '—'}</td>
+      <td className="py-2.5 px-3 text-xs text-text-secondary">{c.current_ctc || '—'}</td>
+      <td className="py-2.5 px-3 text-xs text-text-secondary">{c.notice_period || '—'}</td>
+      <td className="py-2.5 px-3">
+        {c.source === 'Referral' ? (
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded-full font-medium inline-flex items-center gap-0.5 w-fit">
+              <UserPlus size={9} /> Referral
+            </span>
+            {c.referrer_name && (
+              <span className="text-[10px] text-purple-600 truncate max-w-[100px]" title={`Referred by ${c.referrer_name}`}>
+                by {c.referrer_name}
+              </span>
+            )}
+          </div>
+        ) : (
+          <span className="text-[10px] bg-gray-100 text-text-secondary px-1.5 py-0.5 rounded-full font-medium">{c.source}</span>
+        )}
+      </td>
+      <td className="py-2.5 px-3">
+        <StatusBadge status={c.status} onChange={s => handleStatusChange(c.id, s)} size="xs" />
+      </td>
+      <td className="py-2.5 px-3">
+        <TimeInStageBadge statusChangedAt={c.status_changed_at} dateAdded={c.date_added} />
+      </td>
+      <td className="py-2.5 px-3">
+        {c.resume_file ? (
+          <a href={`/api/resume/${c.resume_file.replace('/uploads/', '')}`} target="_blank" rel="noreferrer"
+            className="text-navy hover:text-gold" title={c.resume_filename}>
+            <FileText size={16} />
+          </a>
+        ) : <span className="text-gray-300">—</span>}
+      </td>
+      <td className="py-2.5 px-3">
+        <div className="flex items-center gap-0.5 justify-center">
+          <button onClick={() => openDetail(c)} title="View" className="p-1 rounded hover:bg-gray-100"><Eye size={14} className="text-gray-500" /></button>
+          <button onClick={() => copyPortalLink(c.portal_token)} title="Copy portal link" className="p-1 rounded hover:bg-gray-100"><Link size={14} className="text-gray-500" /></button>
+          <button onClick={() => setEditCandidate(c)} title="Edit" className="p-1 rounded hover:bg-gray-100"><Edit3 size={14} className="text-gray-500" /></button>
+          <button onClick={() => handleDelete(c.id)} title="Delete" className="p-1 rounded hover:bg-red-50"><Trash2 size={14} className="text-red-400" /></button>
+        </div>
+      </td>
+    </tr>
+  );
+
   return (
     <div className="p-6 max-w-[1600px] mx-auto">
       {/* Header */}
@@ -199,6 +334,13 @@ export default function CandidatesPage() {
               <LayoutGrid size={14} /> Kanban
             </button>
           </div>
+          {viewMode === 'table' && (
+            <button onClick={() => setGrouped(g => !g)}
+              className={`px-3 py-2 border rounded-lg text-sm font-medium flex items-center gap-1 ${grouped ? 'border-gold bg-gold/10 text-navy' : 'border-whn-border hover:bg-gray-50'}`}
+              title="Group by location and department">
+              <MapPin size={14} /> {grouped ? 'Grouped' : 'Group'}
+            </button>
+          )}
           <button onClick={handleExport} className="px-3 py-2 border border-whn-border rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-1">
             <Download size={14} /> Export
           </button>
@@ -328,74 +470,40 @@ export default function CandidatesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {candidates.map(c => (
-                    <tr key={c.id} className={`border-t border-whn-border hover:bg-gray-50/50 ${selected.has(c.id) ? 'bg-gold/5' : ''}`}>
-                      <td className="py-2.5 px-3">
-                        <button onClick={() => toggleSelect(c.id)} className="text-gray-400 hover:text-navy">
-                          {selected.has(c.id) ? <CheckSquare size={16} className="text-gold" /> : <Square size={16} />}
-                        </button>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <button onClick={() => openDetail(c)} className="font-semibold text-navy text-sm hover:underline text-left">{c.full_name || '—'}</button>
-                      </td>
-                      <td className="py-2.5 px-3 text-xs text-text-secondary">
-                        <div>{c.phone || '—'}</div>
-                        <div className="truncate max-w-[140px]">{c.email || '—'}</div>
-                      </td>
-                      <td className="py-2.5 px-3 text-xs">
-                        <div className="font-medium text-navy">{c.current_designation || '—'}</div>
-                        <div className="text-text-secondary">{c.current_employer || ''}</div>
-                      </td>
-                      <td className="py-2.5 px-3 text-xs">
-                        {c.department_name ? (
-                          <span className="inline-flex items-center gap-1 bg-navy/5 text-navy px-1.5 py-0.5 rounded-full text-[10px] font-medium">
-                            <Building2 size={9} />{c.department_name}
-                          </span>
-                        ) : '—'}
-                      </td>
-                      <td className="py-2.5 px-3 text-xs text-text-secondary">{c.current_location || '—'}</td>
-                      <td className="py-2.5 px-3 text-xs text-text-secondary">{c.current_ctc || '—'}</td>
-                      <td className="py-2.5 px-3 text-xs text-text-secondary">{c.notice_period || '—'}</td>
-                      <td className="py-2.5 px-3">
-                        {c.source === 'Referral' ? (
-                          <div className="flex flex-col gap-0.5">
-                            <span className="text-[10px] bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded-full font-medium inline-flex items-center gap-0.5 w-fit">
-                              <UserPlus size={9} /> Referral
-                            </span>
-                            {c.referrer_name && (
-                              <span className="text-[10px] text-purple-600 truncate max-w-[100px]" title={`Referred by ${c.referrer_name}`}>
-                                by {c.referrer_name}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-[10px] bg-gray-100 text-text-secondary px-1.5 py-0.5 rounded-full font-medium">{c.source}</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <StatusBadge status={c.status} onChange={s => handleStatusChange(c.id, s)} size="xs" />
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <TimeInStageBadge statusChangedAt={c.status_changed_at} dateAdded={c.date_added} />
-                      </td>
-                      <td className="py-2.5 px-3">
-                        {c.resume_file ? (
-                          <a href={`/api/resume/${c.resume_file.replace('/uploads/', '')}`} target="_blank" rel="noreferrer"
-                            className="text-navy hover:text-gold" title={c.resume_filename}>
-                            <FileText size={16} />
-                          </a>
-                        ) : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <div className="flex items-center gap-0.5 justify-center">
-                          <button onClick={() => openDetail(c)} title="View" className="p-1 rounded hover:bg-gray-100"><Eye size={14} className="text-gray-500" /></button>
-                          <button onClick={() => copyPortalLink(c.portal_token)} title="Copy portal link" className="p-1 rounded hover:bg-gray-100"><Link size={14} className="text-gray-500" /></button>
-                          <button onClick={() => setEditCandidate(c)} title="Edit" className="p-1 rounded hover:bg-gray-100"><Edit3 size={14} className="text-gray-500" /></button>
-                          <button onClick={() => handleDelete(c.id)} title="Delete" className="p-1 rounded hover:bg-red-50"><Trash2 size={14} className="text-red-400" /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {grouped
+                    ? groupedCandidates.map(group => {
+                        const isCollapsed = collapsedLocs.has(group.loc);
+                        return (
+                          <Fragment key={`loc-${group.loc}`}>
+                            {/* Location header */}
+                            <tr className="bg-navy/5 border-t-2 border-navy/20">
+                              <td colSpan={13} className="py-2 px-3">
+                                <button onClick={() => toggleLoc(group.loc)} className="flex items-center gap-2 text-navy font-bold text-sm">
+                                  {isCollapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
+                                  <MapPin size={14} className="text-gold" />
+                                  {group.loc}
+                                  <span className="text-[10px] font-medium bg-navy/10 text-navy px-1.5 py-0.5 rounded-full">{group.count}</span>
+                                </button>
+                              </td>
+                            </tr>
+                            {!isCollapsed && group.depts.map(d => (
+                              <Fragment key={`${group.loc}-${d.dept}`}>
+                                {/* Department sub-header */}
+                                <tr className="bg-gray-50/70">
+                                  <td colSpan={13} className="py-1.5 px-3 pl-9">
+                                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-secondary uppercase tracking-wider">
+                                      <Building2 size={11} /> {d.dept}
+                                      <span className="text-[10px] font-medium text-gray-400 normal-case tracking-normal">({d.list.length})</span>
+                                    </span>
+                                  </td>
+                                </tr>
+                                {d.list.map(renderRow)}
+                              </Fragment>
+                            ))}
+                          </Fragment>
+                        );
+                      })
+                    : candidates.map(renderRow)}
                   {candidates.length === 0 && (
                     <tr><td colSpan={13} className="py-16 text-center text-text-secondary">No candidates found</td></tr>
                   )}
@@ -432,27 +540,87 @@ export default function CandidatesPage() {
           </div>
 
           {detailTab === 'info' && (
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              {[
-                { l: 'Phone', v: detailCandidate.phone }, { l: 'Email', v: detailCandidate.email },
-                { l: 'Location', v: detailCandidate.current_location }, { l: 'Designation', v: detailCandidate.current_designation },
-                { l: 'Employer', v: detailCandidate.current_employer }, { l: 'Department', v: detailCandidate.department_name },
-                { l: 'CTC', v: detailCandidate.current_ctc }, { l: 'Expected CTC', v: detailCandidate.expected_ctc },
-                { l: 'Notice Period', v: detailCandidate.notice_period }, { l: 'Source', v: detailCandidate.source },
-                { l: 'Referred By', v: detailCandidate.referrer_name ? `${detailCandidate.referrer_name}${detailCandidate.referrer_email ? ` (${detailCandidate.referrer_email})` : ''}` : undefined },
-                { l: 'Hometown', v: detailCandidate.hometown },
-              ].map(f => (
-                <div key={f.l}>
-                  <span className="text-text-secondary text-xs">{f.l}</span>
-                  <p className="font-medium text-navy">{f.v || '—'}</p>
+            <div>
+              <div className="flex justify-end mb-3">
+                {!editingInfo ? (
+                  <button onClick={startEditInfo}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border border-whn-border hover:bg-gray-50">
+                    <Edit3 size={13} /> Edit info
+                  </button>
+                ) : (
+                  <div className="flex gap-2">
+                    <button onClick={saveInfo} disabled={savingInfo}
+                      className="inline-flex items-center gap-1 px-4 py-1.5 rounded-lg text-xs font-bold bg-gold text-navy-dark disabled:opacity-50">
+                      {savingInfo ? 'Saving...' : 'Save'}
+                    </button>
+                    <button onClick={cancelEditInfo} disabled={savingInfo}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-whn-border hover:bg-gray-50">
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {!editingInfo ? (
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  {[
+                    { l: 'Name', v: detailCandidate.full_name },
+                    { l: 'Phone', v: detailCandidate.phone }, { l: 'Email', v: detailCandidate.email },
+                    { l: 'Location', v: detailCandidate.current_location }, { l: 'Designation', v: detailCandidate.current_designation },
+                    { l: 'Employer', v: detailCandidate.current_employer }, { l: 'Department', v: detailCandidate.department_name },
+                    { l: 'CTC', v: detailCandidate.current_ctc }, { l: 'Expected CTC', v: detailCandidate.expected_ctc },
+                    { l: 'Notice Period', v: detailCandidate.notice_period }, { l: 'Source', v: detailCandidate.source },
+                    { l: 'Referred By', v: detailCandidate.referrer_name ? `${detailCandidate.referrer_name}${detailCandidate.referrer_email ? ` (${detailCandidate.referrer_email})` : ''}` : undefined },
+                    { l: 'Hometown', v: detailCandidate.hometown },
+                  ].map(f => (
+                    <div key={f.l}>
+                      <span className="text-text-secondary text-xs">{f.l}</span>
+                      <p className="font-medium text-navy">{f.v || '—'}</p>
+                    </div>
+                  ))}
+                  {detailCandidate.portal_token && (
+                    <div className="col-span-2">
+                      <span className="text-text-secondary text-xs">Portal Link</span>
+                      <div className="flex items-center gap-2 mt-1">
+                        <code className="text-xs bg-gray-100 px-2 py-1 rounded flex-1 truncate">{typeof window !== 'undefined' ? `${window.location.origin}/portal?token=${detailCandidate.portal_token}` : ''}</code>
+                        <button onClick={() => copyPortalLink(detailCandidate.portal_token)} className="text-navy hover:text-gold"><Copy size={14} /></button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ))}
-              {detailCandidate.portal_token && (
-                <div className="col-span-2">
-                  <span className="text-text-secondary text-xs">Portal Link</span>
-                  <div className="flex items-center gap-2 mt-1">
-                    <code className="text-xs bg-gray-100 px-2 py-1 rounded flex-1 truncate">{typeof window !== 'undefined' ? `${window.location.origin}/portal?token=${detailCandidate.portal_token}` : ''}</code>
-                    <button onClick={() => copyPortalLink(detailCandidate.portal_token)} className="text-navy hover:text-gold"><Copy size={14} /></button>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  {[
+                    { key: 'full_name', label: 'Name' }, { key: 'phone', label: 'Phone' },
+                    { key: 'email', label: 'Email' }, { key: 'current_location', label: 'Location' },
+                    { key: 'current_designation', label: 'Designation' }, { key: 'current_employer', label: 'Employer' },
+                    { key: 'current_ctc', label: 'Current CTC' }, { key: 'expected_ctc', label: 'Expected CTC' },
+                    { key: 'notice_period', label: 'Notice Period' }, { key: 'hometown', label: 'Hometown' },
+                  ].map(f => (
+                    <div key={f.key}>
+                      <label className="text-text-secondary text-xs">{f.label}</label>
+                      <input value={(detailCandidate as unknown as Record<string, string>)[f.key] || ''}
+                        onChange={e => setDetailCandidate({ ...detailCandidate, [f.key]: e.target.value })}
+                        className="w-full mt-1 px-3 py-2 border border-whn-border rounded-lg text-sm" />
+                    </div>
+                  ))}
+                  <div>
+                    <label className="text-text-secondary text-xs">Department</label>
+                    <select value={detailCandidate.department_id || ''}
+                      onChange={e => {
+                        const dept = departments.find(d => d.id === e.target.value);
+                        setDetailCandidate({ ...detailCandidate, department_id: e.target.value, department_name: dept?.name });
+                      }}
+                      className="w-full mt-1 px-3 py-2 border border-whn-border rounded-lg text-sm">
+                      <option value="">None</option>
+                      {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-text-secondary text-xs">Notes</label>
+                    <textarea value={detailCandidate.notes || ''}
+                      onChange={e => setDetailCandidate({ ...detailCandidate, notes: e.target.value })}
+                      className="w-full mt-1 px-3 py-2 border border-whn-border rounded-lg text-sm" rows={2} />
                   </div>
                 </div>
               )}

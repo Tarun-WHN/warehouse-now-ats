@@ -1,8 +1,20 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Remark } from '@/lib/types';
-import { Star, ClipboardCheck, Search, MessageSquare } from 'lucide-react';
+import { Star, ClipboardCheck, Search, MessageSquare, ChevronDown, ChevronRight } from 'lucide-react';
+
+// A reviewer's full set of comments on one candidate, collapsed into a single line item.
+type ReviewGroup = {
+  key: string;
+  candidate_name: string;
+  author_name: string;
+  latestStage: string;
+  latestOutcome: string;
+  latestRating: number;
+  latestDate: string;
+  entries: Remark[];
+};
 
 const OUTCOMES = ['Shortlisted', 'Selected', 'Rejected', 'On Hold'];
 const STAGES = ['Screening', 'Technical', 'HR', 'Final'];
@@ -19,6 +31,15 @@ export default function ReviewsPage() {
   const [search, setSearch] = useState('');
   const [outcome, setOutcome] = useState('');
   const [stage, setStage] = useState('');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (key: string) => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
 
   const fetchReviews = useCallback(() => {
     const params = new URLSearchParams();
@@ -30,8 +51,35 @@ export default function ReviewsPage() {
 
   useEffect(() => { fetchReviews(); }, [fetchReviews]);
 
+  // Collapse all comments from the same reviewer on the same candidate into one line item.
+  // `reviews` arrives newest-first, so the first entry seen per group is the latest.
+  const groups = useMemo<ReviewGroup[]>(() => {
+    const map = new Map<string, ReviewGroup>();
+    for (const r of reviews) {
+      const key = `${r.candidate_id || r.candidate_name || '?'}::${(r.author_name || 'Anonymous').toLowerCase()}`;
+      let g = map.get(key);
+      if (!g) {
+        g = {
+          key,
+          candidate_name: r.candidate_name || '—',
+          author_name: r.author_name || 'Anonymous',
+          latestStage: r.stage || '',
+          latestOutcome: r.outcome || '',
+          latestRating: r.rating || 0,
+          latestDate: r.created_at,
+          entries: [],
+        };
+        map.set(key, g);
+      }
+      // First non-empty outcome wins (newest-first ordering means latest decision).
+      if (!g.latestOutcome && r.outcome) g.latestOutcome = r.outcome;
+      g.entries.push(r);
+    }
+    return Array.from(map.values());
+  }, [reviews]);
+
   const counts = OUTCOMES.reduce((acc, o) => {
-    acc[o] = reviews.filter(r => r.outcome === o).length;
+    acc[o] = groups.filter(g => g.latestOutcome === o).length;
     return acc;
   }, {} as Record<string, number>);
 
@@ -94,31 +142,60 @@ export default function ReviewsPage() {
               </tr>
             </thead>
             <tbody>
-              {reviews.map(r => (
-                <tr key={r.id} className="border-t border-whn-border hover:bg-gray-50/50 align-top">
-                  <td className="py-3 px-4 font-semibold text-navy text-sm">{r.candidate_name || '—'}</td>
-                  <td className="py-3 px-4 text-sm text-text-secondary">{r.author_name}</td>
-                  <td className="py-3 px-4">
-                    <span className="text-[10px] bg-navy/10 text-navy px-1.5 py-0.5 rounded-full font-medium">{r.stage || '—'}</span>
-                  </td>
-                  <td className="py-3 px-4">
-                    <div className="flex">{[1,2,3,4,5].map(s => <Star key={s} size={11} className={s <= r.rating ? 'fill-gold text-gold' : 'text-gray-200'} />)}</div>
-                  </td>
-                  <td className="py-3 px-4">
-                    {r.outcome
-                      ? <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${outcomeColors[r.outcome] || 'bg-gray-100 text-gray-600'}`}>{r.outcome}</span>
-                      : <span className="text-gray-300 text-xs">—</span>}
-                  </td>
-                  <td className="py-3 px-4 text-sm text-text-secondary max-w-[360px]">
-                    <span className="flex items-start gap-1.5">
-                      <MessageSquare size={13} className="text-gray-300 mt-0.5 flex-shrink-0" />
-                      <span>{r.comment}</span>
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-xs text-gray-400 whitespace-nowrap">{new Date(r.created_at).toLocaleDateString()}</td>
-                </tr>
-              ))}
-              {reviews.length === 0 && (
+              {groups.map(g => {
+                const isOpen = expanded.has(g.key);
+                const latest = g.entries[0];
+                const hasMore = g.entries.length > 1;
+                return (
+                  <tr key={g.key} className="border-t border-whn-border hover:bg-gray-50/50 align-top">
+                    <td className="py-3 px-4 font-semibold text-navy text-sm">{g.candidate_name}</td>
+                    <td className="py-3 px-4 text-sm text-text-secondary">{g.author_name}</td>
+                    <td className="py-3 px-4">
+                      <span className="text-[10px] bg-navy/10 text-navy px-1.5 py-0.5 rounded-full font-medium">{g.latestStage || '—'}</span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="flex">{[1,2,3,4,5].map(s => <Star key={s} size={11} className={s <= g.latestRating ? 'fill-gold text-gold' : 'text-gray-200'} />)}</div>
+                    </td>
+                    <td className="py-3 px-4">
+                      {g.latestOutcome
+                        ? <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${outcomeColors[g.latestOutcome] || 'bg-gray-100 text-gray-600'}`}>{g.latestOutcome}</span>
+                        : <span className="text-gray-300 text-xs">—</span>}
+                    </td>
+                    <td className="py-3 px-4 text-sm text-text-secondary max-w-[420px]">
+                      {!isOpen ? (
+                        <div className="flex items-start gap-1.5">
+                          <MessageSquare size={13} className="text-gray-300 mt-0.5 flex-shrink-0" />
+                          <span className="line-clamp-2">{latest.comment}</span>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {g.entries.map(e => (
+                            <div key={e.id} className="flex items-start gap-1.5">
+                              <MessageSquare size={13} className="text-gray-300 mt-0.5 flex-shrink-0" />
+                              <div>
+                                <span>{e.comment}</span>
+                                <span className="block text-[10px] text-gray-400 mt-0.5">
+                                  {e.stage ? `${e.stage} · ` : ''}{new Date(e.created_at).toLocaleDateString()}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {hasMore && (
+                        <button onClick={() => toggleExpand(g.key)}
+                          className="mt-1.5 inline-flex items-center gap-0.5 text-[11px] font-medium text-navy hover:underline">
+                          {isOpen
+                            ? <><ChevronDown size={12} /> Hide comments</>
+                            : <><ChevronRight size={12} /> Show all {g.entries.length} comments</>}
+                        </button>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-xs text-gray-400 whitespace-nowrap">{new Date(g.latestDate).toLocaleDateString()}</td>
+                  </tr>
+                );
+              })}
+              {groups.length === 0 && (
                 <tr><td colSpan={7} className="py-16 text-center text-text-secondary">
                   <ClipboardCheck size={40} className="mx-auto mb-3 text-gray-300" />
                   <p className="font-medium">No reviews yet</p>
