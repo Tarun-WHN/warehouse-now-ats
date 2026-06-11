@@ -19,9 +19,9 @@ const STATIC_PREFIXES = ['/_next', '/favicon', '/images', '/api/resume'];
 // Role-based route access
 const ROLE_ACCESS: Record<string, string[]> = {
   Admin: ['*'],
-  Recruiter: ['/', '/candidates', '/jobs', '/interviews', '/upload', '/templates', '/referral', '/careers', '/settings', '/api'],
-  'Hiring Manager': ['/', '/candidates', '/jobs', '/interviews', '/referral', '/careers', '/api'],
-  Viewer: ['/', '/candidates', '/jobs', '/interviews', '/careers', '/api'],
+  Recruiter: ['/', '/candidates', '/jobs', '/interviews', '/reviews', '/upload', '/templates', '/referral', '/careers', '/settings', '/account', '/api'],
+  'Hiring Manager': ['/', '/candidates', '/jobs', '/interviews', '/reviews', '/referral', '/careers', '/account', '/api'],
+  Viewer: ['/', '/candidates', '/jobs', '/interviews', '/reviews', '/careers', '/account', '/api'],
   Candidate: ['/portal', '/referral', '/api/portal', '/api/auth'],
 };
 

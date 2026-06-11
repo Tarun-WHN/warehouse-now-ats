@@ -85,6 +85,13 @@ export default function SettingsPage() {
     setSaving(true); setFormError('');
     const res = await fetch('/api/team', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(memberForm) });
     if (!res.ok) { const err = await res.json(); setFormError(err.error || 'Failed'); setSaving(false); return; }
+    const data = await res.json();
+    const tempPw = data.default_password || 'welcome123';
+    if (data.email_sent) {
+      alert(`${memberForm.name} added. A welcome email with login details was sent to ${memberForm.email}.`);
+    } else {
+      alert(`${memberForm.name} added.\n\nWelcome email was NOT sent${data.email_error ? ` (${data.email_error})` : ' (email not configured)'}.\nPlease share their login manually:\nEmail: ${memberForm.email}\nTemporary password: ${tempPw}`);
+    }
     setAddMemberModal(false);
     setMemberForm({ name: '', email: '', role: 'Recruiter', phone: '', department: '' });
     setSaving(false); fetchTeam();
