@@ -341,6 +341,20 @@ export default function CandidatesPage() {
               <MapPin size={14} /> {grouped ? 'Grouped' : 'Group'}
             </button>
           )}
+          {viewMode === 'table' && grouped && (
+            <>
+              <button onClick={() => setCollapsedLocs(new Set(groupedCandidates.map(g => g.loc)))}
+                className="px-3 py-2 border border-whn-border rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-1"
+                title="Collapse all locations">
+                <ChevronRight size={14} /> Collapse all
+              </button>
+              <button onClick={() => setCollapsedLocs(new Set())}
+                className="px-3 py-2 border border-whn-border rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-1"
+                title="Expand all locations">
+                <ChevronDown size={14} /> Expand all
+              </button>
+            </>
+          )}
           <button onClick={handleExport} className="px-3 py-2 border border-whn-border rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center gap-1">
             <Download size={14} /> Export
           </button>
