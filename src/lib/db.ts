@@ -4,7 +4,7 @@ import fs from 'fs';
 import {
   Candidate, ActivityLog, EmailTemplate, DashboardStats, FilterParams,
   TeamMember, Remark, Department, Job, CandidateJob, Interview, Scorecard,
-  OfferTemplate, WorkflowRule
+  OfferTemplate, WorkflowRule, OfferLetter, OfferLetterFields
 } from './types';
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
@@ -206,6 +206,20 @@ function initDb(db: Database.Database) {
       created_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS offer_letters (
+      id TEXT PRIMARY KEY,
+      template_id TEXT DEFAULT '',
+      candidate_id TEXT DEFAULT '',
+      employee_name TEXT DEFAULT '',
+      fields TEXT DEFAULT '{}',
+      status TEXT NOT NULL DEFAULT 'draft',
+      sent_to TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT NOT NULL,
+      sent_at TEXT DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS idx_offer_letters_candidate ON offer_letters(candidate_id);
+
     CREATE TABLE IF NOT EXISTS processed_emails (
       message_id TEXT PRIMARY KEY,
       from_address TEXT DEFAULT '',
@@ -226,6 +240,10 @@ function initDb(db: Database.Database) {
     `ALTER TABLE team_members ADD COLUMN password_hash TEXT DEFAULT ''`,
     `ALTER TABLE candidates ADD COLUMN password_hash TEXT DEFAULT ''`,
     `ALTER TABLE remarks ADD COLUMN outcome TEXT DEFAULT ''`,
+    `ALTER TABLE offer_templates ADD COLUMN category TEXT DEFAULT ''`,
+    `ALTER TABLE offer_templates ADD COLUMN file_path TEXT DEFAULT ''`,
+    `ALTER TABLE offer_templates ADD COLUMN original_filename TEXT DEFAULT ''`,
+    `ALTER TABLE offer_templates ADD COLUMN preview_html TEXT DEFAULT ''`,
   ];
   for (const m of migrations) {
     try { db.exec(m); } catch { /* column exists */ }
@@ -984,6 +1002,69 @@ export function updateOfferTemplate(id: string, updates: Partial<OfferTemplate>)
 export function deleteOfferTemplate(id: string): boolean {
   const db = getDb();
   return db.prepare('DELETE FROM offer_templates WHERE id = ?').run(id).changes > 0;
+}
+
+export function getOfferTemplate(id: string): OfferTemplate | null {
+  const db = getDb();
+  const r = db.prepare('SELECT * FROM offer_templates WHERE id = ?').get(id) as ({ variables: string; is_active: number } & Record<string, unknown>) | undefined;
+  if (!r) return null;
+  return { ...r, variables: JSON.parse((r.variables as string) || '[]'), is_active: !!r.is_active } as unknown as OfferTemplate;
+}
+
+// Create a .docx-backed offer-letter template (uploaded Word format).
+export function addOfferDocTemplate(t: {
+  name: string; category: string; file_path: string; original_filename: string; preview_html: string;
+}): OfferTemplate {
+  const db = getDb();
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  db.prepare(`INSERT INTO offer_templates (id, name, body, variables, is_active, created_at, category, file_path, original_filename, preview_html)
+    VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`).run(
+    id, t.name, '', '[]', now, t.category, t.file_path, t.original_filename, t.preview_html
+  );
+  return getOfferTemplate(id)!;
+}
+
+// ═══════════════════════════════════════════════════
+// ─── Offer Letters (generated records) ───
+// ═══════════════════════════════════════════════════
+
+function mapOfferLetter(r: Record<string, unknown>): OfferLetter {
+  return {
+    ...(r as object),
+    fields: JSON.parse((r.fields as string) || '{}'),
+  } as OfferLetter;
+}
+
+export function getOfferLetters(): OfferLetter[] {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT ol.*, ot.name as template_name
+    FROM offer_letters ol
+    LEFT JOIN offer_templates ot ON ol.template_id = ot.id
+    ORDER BY ol.created_at DESC LIMIT 500
+  `).all() as Record<string, unknown>[];
+  return rows.map(mapOfferLetter);
+}
+
+export function addOfferLetter(o: {
+  template_id: string; candidate_id?: string; employee_name: string;
+  fields: OfferLetterFields; status: 'draft' | 'sent'; sent_to?: string; created_by: string;
+}): OfferLetter {
+  const db = getDb();
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  db.prepare(`INSERT INTO offer_letters (id, template_id, candidate_id, employee_name, fields, status, sent_to, created_by, created_at, sent_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    id, o.template_id, o.candidate_id || '', o.employee_name, JSON.stringify(o.fields),
+    o.status, o.sent_to || '', o.created_by, now, o.status === 'sent' ? now : ''
+  );
+  return getOfferLetters().find(l => l.id === id)!;
+}
+
+export function deleteOfferLetter(id: string): boolean {
+  const db = getDb();
+  return db.prepare('DELETE FROM offer_letters WHERE id = ?').run(id).changes > 0;
 }
 
 // ═══════════════════════════════════════════════════

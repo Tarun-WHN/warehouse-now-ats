@@ -201,6 +201,44 @@ export interface OfferTemplate {
   variables: string[];
   is_active: boolean;
   created_at: string;
+  // Uploaded .docx-backed templates (offer letters)
+  category?: OfferCategory | '';
+  file_path?: string;       // relative path of the stored .docx on the data disk
+  original_filename?: string;
+  preview_html?: string;    // mammoth-rendered HTML of the blank template (for on-screen preview)
+}
+
+export type OfferCategory = 'Corporate' | 'Warehouse' | 'Temp';
+
+export interface SalaryLineItem {
+  component: string;
+  amount: string;
+}
+
+export interface OfferLetterFields {
+  employee_name: string;
+  reporting_manager: string;
+  offer_date: string;
+  joining_date: string;
+  designation: string;
+  reporting_location: string;
+  key_responsibilities: string;
+  salary_offered: string;
+  salary_items: SalaryLineItem[];
+}
+
+export interface OfferLetter {
+  id: string;
+  template_id: string;
+  template_name?: string;
+  candidate_id?: string;
+  employee_name: string;
+  fields: OfferLetterFields;
+  status: 'draft' | 'sent';
+  sent_to?: string;
+  created_by: string;
+  created_at: string;
+  sent_at?: string;
 }
 
 // Workflow Rules

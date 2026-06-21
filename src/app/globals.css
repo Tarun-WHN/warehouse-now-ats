@@ -104,3 +104,12 @@ body {
   border-color: var(--gold) !important;
   background: rgba(255, 209, 0, 0.08) !important;
 }
+
+/* Offer-letter preview (renders mammoth-converted .docx HTML) */
+.offer-preview { font-family: Georgia, 'Times New Roman', serif; color: #1a1a1a; line-height: 1.55; font-size: 14px; }
+.offer-preview p { margin: 0 0 0.6em; }
+.offer-preview h1, .offer-preview h2, .offer-preview h3 { color: #1B1464; margin: 0.8em 0 0.4em; }
+.offer-preview table { border-collapse: collapse; width: 100%; margin: 0.8em 0; }
+.offer-preview td, .offer-preview th { border: 1px solid #ccc; padding: 5px 9px; text-align: left; vertical-align: top; }
+.offer-preview ul, .offer-preview ol { margin: 0 0 0.6em 1.2em; }
+.offer-preview img { max-width: 100%; height: auto; }
