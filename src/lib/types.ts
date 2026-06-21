@@ -210,6 +210,37 @@ export interface OfferTemplate {
 
 export type OfferCategory = 'Corporate' | 'Warehouse' | 'Temp';
 
+// ─── Salary structure ───
+export type SalaryCategory = 'earning' | 'employer' | 'deduction';
+export type SalaryMode = 'fixed' | 'percent_basic';
+export type PayoutFrequency = 'Monthly' | 'Quarterly' | 'Half-Yearly' | 'Annually';
+
+export interface SalaryComponent {
+  name: string;
+  category: SalaryCategory; // earning → gross; employer → adds to CTC; deduction → reduces net
+  mode: SalaryMode;         // fixed monthly amount OR percent of Basic
+  value: number;            // monthly amount (fixed) or percentage (percent_basic)
+}
+
+export interface VariablePay {
+  enabled: boolean;
+  amount: number;           // amount per payout
+  frequency: PayoutFrequency;
+}
+
+export interface SalaryStructure {
+  components: SalaryComponent[];
+  variable: VariablePay;
+}
+
+export interface SalaryStructureRecord {
+  id: string;
+  name: string;
+  structure: SalaryStructure;
+  created_at: string;
+}
+
+// Legacy shape kept so old saved offer letters still parse
 export interface SalaryLineItem {
   component: string;
   amount: string;
@@ -224,7 +255,7 @@ export interface OfferLetterFields {
   reporting_location: string;
   key_responsibilities: string;
   salary_offered: string;
-  salary_items: SalaryLineItem[];
+  salary: SalaryStructure;
 }
 
 export interface OfferLetter {

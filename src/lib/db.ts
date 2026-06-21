@@ -4,7 +4,8 @@ import fs from 'fs';
 import {
   Candidate, ActivityLog, EmailTemplate, DashboardStats, FilterParams,
   TeamMember, Remark, Department, Job, CandidateJob, Interview, Scorecard,
-  OfferTemplate, WorkflowRule, OfferLetter, OfferLetterFields
+  OfferTemplate, WorkflowRule, OfferLetter, OfferLetterFields,
+  SalaryStructureRecord, SalaryStructure
 } from './types';
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
@@ -219,6 +220,13 @@ function initDb(db: Database.Database) {
       sent_at TEXT DEFAULT ''
     );
     CREATE INDEX IF NOT EXISTS idx_offer_letters_candidate ON offer_letters(candidate_id);
+
+    CREATE TABLE IF NOT EXISTS salary_structures (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      data TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL
+    );
 
     CREATE TABLE IF NOT EXISTS processed_emails (
       message_id TEXT PRIMARY KEY,
@@ -1065,6 +1073,27 @@ export function addOfferLetter(o: {
 export function deleteOfferLetter(id: string): boolean {
   const db = getDb();
   return db.prepare('DELETE FROM offer_letters WHERE id = ?').run(id).changes > 0;
+}
+
+// ─── Reusable Salary Structures ───
+
+export function getSalaryStructures(): SalaryStructureRecord[] {
+  const db = getDb();
+  const rows = db.prepare('SELECT * FROM salary_structures ORDER BY name ASC').all() as { id: string; name: string; data: string; created_at: string }[];
+  return rows.map(r => ({ id: r.id, name: r.name, structure: JSON.parse(r.data || '{}') as SalaryStructure, created_at: r.created_at }));
+}
+
+export function addSalaryStructure(name: string, structure: SalaryStructure): SalaryStructureRecord {
+  const db = getDb();
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  db.prepare('INSERT INTO salary_structures (id, name, data, created_at) VALUES (?, ?, ?, ?)').run(id, name, JSON.stringify(structure), now);
+  return { id, name, structure, created_at: now };
+}
+
+export function deleteSalaryStructure(id: string): boolean {
+  const db = getDb();
+  return db.prepare('DELETE FROM salary_structures WHERE id = ?').run(id).changes > 0;
 }
 
 // ═══════════════════════════════════════════════════

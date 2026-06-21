@@ -1,7 +1,8 @@
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 import mammoth from 'mammoth';
-import type { OfferLetterFields, SalaryLineItem } from './types';
+import type { OfferLetterFields } from './types';
+import { computeSalary, formatINR } from './salary';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -16,24 +17,21 @@ export function formatDate(value: string): string {
   return `${parseInt(d, 10)} ${month} ${y}`;
 }
 
-// Sum salary line items, tolerating commas / currency symbols in the amounts.
-function sumAmounts(items: SalaryLineItem[]): number {
-  return items.reduce((total, it) => {
-    const n = parseFloat(String(it.amount).replace(/[^0-9.]/g, ''));
-    return total + (isNaN(n) ? 0 : n);
-  }, 0);
-}
-
-function formatINR(n: number): string {
-  return n.toLocaleString('en-IN');
-}
-
 // The placeholder data made available to the .docx template.
-// In Word, authors use {employee_name}, {designation}, ... and for the
-// salary break-up: {#salary_items}{component}: {amount}{/salary_items} and {total_salary}.
+// Scalars:  {employee_name}, {designation}, {offer_date}, {salary_offered}, ...
+// Salary totals (monthly + annual): {gross_monthly}/{gross_annual}, {ctc_monthly}/{ctc_annual},
+//   {net_monthly}/{net_annual}, {employer_total_monthly}/{employer_total_annual},
+//   {deductions_total_monthly}/{deductions_total_annual}
+// Variable pay: {variable_pay}, {variable_frequency}, {variable_annual}
+// Line-item loops (each exposes {component} {monthly} {annual}):
+//   {#earnings}…{/earnings}, {#employer_items}…{/employer_items}, {#deductions}…{/deductions}
+//   {#salary_items}…{/salary_items} (alias of earnings, kept for older templates)
 export function buildTemplateData(fields: OfferLetterFields): Record<string, unknown> {
-  const items = (fields.salary_items || []).filter(it => (it.component || '').trim() || (it.amount || '').trim());
-  const total = sumAmounts(items);
+  const c = computeSalary(fields.salary);
+  const rows = (arr: { name: string; monthly: number; annual: number }[]) =>
+    arr.map(r => ({ component: r.name, monthly: formatINR(r.monthly), annual: formatINR(r.annual), amount: formatINR(r.monthly) }));
+
+  const earnings = rows(c.earnings);
   return {
     employee_name: fields.employee_name || '',
     reporting_manager: fields.reporting_manager || '',
@@ -42,9 +40,29 @@ export function buildTemplateData(fields: OfferLetterFields): Record<string, unk
     designation: fields.designation || '',
     reporting_location: fields.reporting_location || '',
     key_responsibilities: fields.key_responsibilities || '',
-    salary_offered: fields.salary_offered || '',
-    salary_items: items.map(it => ({ component: it.component || '', amount: it.amount || '' })),
-    total_salary: total ? formatINR(total) : '',
+    // Free-text CTC if provided, else the computed annual CTC.
+    salary_offered: fields.salary_offered || formatINR(c.ctcAnnual),
+
+    earnings,
+    salary_items: earnings,
+    employer_items: rows(c.employer),
+    deductions: rows(c.deductions),
+
+    gross_monthly: formatINR(c.grossMonthly),
+    gross_annual: formatINR(c.grossAnnual),
+    employer_total_monthly: formatINR(c.employerMonthly),
+    employer_total_annual: formatINR(c.employerAnnual),
+    deductions_total_monthly: formatINR(c.deductionsMonthly),
+    deductions_total_annual: formatINR(c.deductionsAnnual),
+    ctc_monthly: formatINR(c.ctcMonthly),
+    ctc_annual: formatINR(c.ctcAnnual),
+    net_monthly: formatINR(c.netMonthly),
+    net_annual: formatINR(c.netAnnual),
+    total_salary: formatINR(c.ctcAnnual),
+
+    variable_pay: c.variableEnabled ? formatINR(c.variablePerPayout) : '',
+    variable_frequency: c.variableEnabled ? c.variableFrequency : '',
+    variable_annual: c.variableEnabled ? formatINR(c.variableAnnual) : '',
   };
 }
 

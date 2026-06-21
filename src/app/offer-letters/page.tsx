@@ -2,12 +2,16 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Modal } from '@/components/Modal';
-import { OfferTemplate, SalaryLineItem } from '@/lib/types';
 import {
-  FileText, Upload, Download, Mail, Trash2, Plus, Printer, Loader2, FileUp, Info, X,
+  OfferTemplate, SalaryCategory, PayoutFrequency, SalaryStructureRecord, Candidate,
+} from '@/lib/types';
+import { computeSalary, defaultStructure, formatINR } from '@/lib/salary';
+import {
+  FileText, Upload, Download, Mail, Trash2, Plus, Printer, Loader2, FileUp, Info, X, Search, UserCheck, Save,
 } from 'lucide-react';
 
 const CATEGORIES = ['Corporate', 'Warehouse', 'Temp'];
+const FREQUENCIES: PayoutFrequency[] = ['Monthly', 'Quarterly', 'Half-Yearly', 'Annually'];
 
 const emptyFields = () => ({
   employee_name: '',
@@ -18,11 +22,7 @@ const emptyFields = () => ({
   reporting_location: '',
   key_responsibilities: '',
   salary_offered: '',
-  salary_items: [
-    { component: 'Basic', amount: '' },
-    { component: 'HRA', amount: '' },
-    { component: 'Special Allowance', amount: '' },
-  ] as SalaryLineItem[],
+  salary: defaultStructure(),
 });
 
 const PLACEHOLDERS = [
@@ -33,9 +33,15 @@ const PLACEHOLDERS = [
   ['{designation}', 'Designation'],
   ['{reporting_location}', 'Reporting location'],
   ['{key_responsibilities}', 'Key responsibilities'],
-  ['{salary_offered}', 'Salary offered (CTC)'],
-  ['{#salary_items}{component}: {amount}\n{/salary_items}', 'Salary break-up (loop)'],
-  ['{total_salary}', 'Total of the break-up'],
+  ['{salary_offered}', 'CTC (free text, or auto = annual CTC)'],
+  ['{#earnings}{component}: {monthly} / {annual}\\n{/earnings}', 'Earnings rows (monthly & annual)'],
+  ['{#employer_items}…{/employer_items}', 'Employer contribution rows'],
+  ['{#deductions}…{/deductions}', 'Deduction rows'],
+  ['{gross_monthly} / {gross_annual}', 'Gross salary'],
+  ['{ctc_monthly} / {ctc_annual}', 'Cost to company'],
+  ['{net_monthly} / {net_annual}', 'Net take-home'],
+  ['{variable_pay} / {variable_frequency}', 'Variable pay & payout frequency'],
+  ['{variable_annual}', 'Annual variable pay'],
 ];
 
 export default function OfferLettersPage() {
@@ -48,6 +54,15 @@ export default function OfferLettersPage() {
   const [previewHtml, setPreviewHtml] = useState('');
   const [busy, setBusy] = useState<'' | 'preview' | 'word' | 'pdf'>('');
   const [error, setError] = useState('');
+
+  // Candidate picker
+  const [candQuery, setCandQuery] = useState('');
+  const [candResults, setCandResults] = useState<Candidate[]>([]);
+  const [candOpen, setCandOpen] = useState(false);
+  const [linked, setLinked] = useState<{ id: string; email: string } | null>(null);
+
+  // Saved salary structures
+  const [structures, setStructures] = useState<SalaryStructureRecord[]>([]);
 
   // Email modal
   const [emailOpen, setEmailOpen] = useState(false);
@@ -68,26 +83,71 @@ export default function OfferLettersPage() {
   const loadTemplates = useCallback(() => {
     fetch('/api/offer-templates').then(r => r.json()).then(d => setTemplates(Array.isArray(d) ? d : []));
   }, []);
-  useEffect(() => { loadTemplates(); }, [loadTemplates]);
+  const loadStructures = useCallback(() => {
+    fetch('/api/salary-structures').then(r => r.json()).then(d => setStructures(Array.isArray(d) ? d : []));
+  }, []);
+  useEffect(() => { loadTemplates(); loadStructures(); }, [loadTemplates, loadStructures]);
+
+  // Candidate search (debounced)
+  useEffect(() => {
+    if (!candQuery.trim()) { setCandResults([]); return; }
+    const t = setTimeout(() => {
+      fetch(`/api/candidates?search=${encodeURIComponent(candQuery)}&per_page=8`)
+        .then(r => r.json()).then(d => { setCandResults(d.candidates || []); setCandOpen(true); });
+    }, 250);
+    return () => clearTimeout(t);
+  }, [candQuery]);
 
   const docTemplates = templates.filter(t => t.file_path);
   const set = (k: string, v: string) => setFields(f => ({ ...f, [k]: v }));
+  const comp = computeSalary(fields.salary);
 
-  const setSalary = (i: number, key: keyof SalaryLineItem, v: string) =>
-    setFields(f => ({ ...f, salary_items: f.salary_items.map((it, idx) => idx === i ? { ...it, [key]: v } : it) }));
-  const addSalaryRow = () => setFields(f => ({ ...f, salary_items: [...f.salary_items, { component: '', amount: '' }] }));
-  const removeSalaryRow = (i: number) => setFields(f => ({ ...f, salary_items: f.salary_items.filter((_, idx) => idx !== i) }));
-  const salaryTotal = fields.salary_items.reduce((t, it) => {
-    const n = parseFloat(String(it.amount).replace(/[^0-9.]/g, ''));
-    return t + (isNaN(n) ? 0 : n);
-  }, 0);
-
-  const callApi = async (action: 'preview' | 'download' | 'email', extra: Record<string, unknown> = {}) => {
-    return fetch('/api/offer-letters', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ template_id: templateId, action, fields, ...extra }),
-    });
+  const pickCandidate = (c: Candidate) => {
+    setFields(f => ({
+      ...f,
+      employee_name: c.full_name || f.employee_name,
+      designation: c.current_designation || f.designation,
+      reporting_location: c.current_location || f.reporting_location,
+    }));
+    setLinked({ id: c.id, email: c.email || '' });
+    setCandQuery(c.full_name || '');
+    setCandOpen(false);
   };
+  const clearCandidate = () => { setLinked(null); setCandQuery(''); };
+
+  // Salary structure mutations
+  const updateComp = (idx: number, patch: Record<string, unknown>) =>
+    setFields(f => ({ ...f, salary: { ...f.salary, components: f.salary.components.map((c, i) => i === idx ? { ...c, ...patch } : c) } }));
+  const addComp = (category: SalaryCategory) =>
+    setFields(f => ({ ...f, salary: { ...f.salary, components: [...f.salary.components, { name: '', category, mode: 'fixed' as const, value: 0 }] } }));
+  const removeComp = (idx: number) =>
+    setFields(f => ({ ...f, salary: { ...f.salary, components: f.salary.components.filter((_, i) => i !== idx) } }));
+  const setVariable = (patch: Record<string, unknown>) =>
+    setFields(f => ({ ...f, salary: { ...f.salary, variable: { ...f.salary.variable, ...patch } } }));
+
+  const loadStructure = (id: string) => {
+    const s = structures.find(x => x.id === id);
+    if (s) setFields(f => ({ ...f, salary: JSON.parse(JSON.stringify(s.structure)) }));
+  };
+  const saveStructure = async () => {
+    const name = prompt('Name this salary structure (e.g. "Corporate – Bangalore"):');
+    if (!name || !name.trim()) return;
+    const res = await fetch('/api/salary-structures', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim(), structure: fields.salary }),
+    });
+    if (res.ok) loadStructures();
+  };
+  const deleteStructure = async (id: string) => {
+    await fetch(`/api/salary-structures/${id}`, { method: 'DELETE' });
+    loadStructures();
+  };
+
+  const callApi = async (action: 'preview' | 'download' | 'email', extra: Record<string, unknown> = {}) =>
+    fetch('/api/offer-letters', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ template_id: templateId, action, fields, candidate_id: linked?.id, ...extra }),
+    });
 
   const doPreview = async (): Promise<string> => {
     setError('');
@@ -108,8 +168,7 @@ export default function OfferLettersPage() {
     const res = await callApi('download');
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setError(data.error || 'Download failed'); setBusy('');
-      return;
+      setError(data.error || 'Download failed'); setBusy(''); return;
     }
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
@@ -144,7 +203,7 @@ export default function OfferLettersPage() {
   const openEmail = () => {
     setEmailMsg(null);
     setEmailSubject(`Offer Letter — ${fields.employee_name || 'Warehouse Now'}`);
-    setEmailTo('');
+    setEmailTo(linked?.email || '');
     setCoverLetter('');
     setEmailOpen(true);
   };
@@ -155,11 +214,8 @@ export default function OfferLettersPage() {
     const res = await callApi('email', { email: emailTo.trim(), subject: emailSubject, cover_letter: coverLetter });
     const data = await res.json();
     setSending(false);
-    if (res.ok) {
-      setEmailMsg({ type: 'ok', text: `Offer letter emailed to ${emailTo.trim()}.` });
-    } else {
-      setEmailMsg({ type: 'err', text: data.error || 'Failed to send.' });
-    }
+    if (res.ok) setEmailMsg({ type: 'ok', text: `Offer letter emailed to ${emailTo.trim()}.` });
+    else setEmailMsg({ type: 'err', text: data.error || 'Failed to send.' });
   };
 
   const uploadTemplate = async () => {
@@ -168,9 +224,7 @@ export default function OfferLettersPage() {
     if (!upFile) { setUpError('Choose a .docx file.'); return; }
     setUploading(true);
     const fd = new FormData();
-    fd.append('file', upFile);
-    fd.append('name', upName.trim());
-    fd.append('category', upCategory);
+    fd.append('file', upFile); fd.append('name', upName.trim()); fd.append('category', upCategory);
     const res = await fetch('/api/offer-templates', { method: 'POST', body: fd });
     const data = await res.json();
     setUploading(false);
@@ -196,7 +250,6 @@ export default function OfferLettersPage() {
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-2 mb-5 border-b border-whn-border">
         {(['generate', 'templates'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
@@ -222,6 +275,37 @@ export default function OfferLettersPage() {
               )}
             </div>
 
+            {/* Candidate picker */}
+            <div className="relative">
+              <label className="text-xs font-medium text-text-secondary">Pick Candidate (optional — auto-fills name, role, location & email)</label>
+              {linked ? (
+                <div className="mt-1 flex items-center gap-2 px-3 py-2 border border-green-200 bg-green-50 rounded-lg text-sm">
+                  <UserCheck size={15} className="text-green-600" />
+                  <span className="font-medium text-navy">{fields.employee_name}</span>
+                  {linked.email && <span className="text-text-secondary text-xs">{linked.email}</span>}
+                  <button onClick={clearCandidate} className="ml-auto text-gray-400 hover:text-red-500"><X size={14} /></button>
+                </div>
+              ) : (
+                <div className="relative mt-1">
+                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input value={candQuery} onChange={e => setCandQuery(e.target.value)} onFocus={() => candResults.length && setCandOpen(true)}
+                    placeholder="Search candidate by name, email, phone…"
+                    className="w-full pl-9 pr-3 py-2 border border-whn-border rounded-lg text-sm" />
+                  {candOpen && candResults.length > 0 && (
+                    <div className="absolute z-20 mt-1 w-full bg-white border border-whn-border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {candResults.map(c => (
+                        <button key={c.id} onClick={() => pickCandidate(c)}
+                          className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-whn-border last:border-0">
+                          <p className="text-sm font-medium text-navy">{c.full_name || '—'}</p>
+                          <p className="text-xs text-text-secondary">{[c.current_designation, c.email, c.phone].filter(Boolean).join(' · ')}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <Field label="Employee Name" value={fields.employee_name} onChange={v => set('employee_name', v)} />
               <Field label="Reporting Manager" value={fields.reporting_manager} onChange={v => set('reporting_manager', v)} />
@@ -229,7 +313,7 @@ export default function OfferLettersPage() {
               <Field label="Date of Joining" type="date" value={fields.joining_date} onChange={v => set('joining_date', v)} />
               <Field label="Designation" value={fields.designation} onChange={v => set('designation', v)} />
               <Field label="Reporting Location" value={fields.reporting_location} onChange={v => set('reporting_location', v)} />
-              <Field label="Salary Offered (CTC)" value={fields.salary_offered} onChange={v => set('salary_offered', v)} />
+              <Field label="CTC text (optional override)" value={fields.salary_offered} onChange={v => set('salary_offered', v)} />
             </div>
 
             <div>
@@ -240,27 +324,62 @@ export default function OfferLettersPage() {
             </div>
 
             {/* Salary break-up */}
-            <div className="bg-white border border-whn-border rounded-xl p-4">
-              <div className="flex items-center justify-between mb-2">
+            <div className="bg-white border border-whn-border rounded-xl p-4 space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <h3 className="text-sm font-bold text-navy">Salary Break-up</h3>
-                <button onClick={addSalaryRow} className="text-xs font-medium text-navy flex items-center gap-1 hover:underline">
-                  <Plus size={13} /> Add row
-                </button>
+                <div className="flex items-center gap-2">
+                  <select onChange={e => { if (e.target.value) loadStructure(e.target.value); e.target.value = ''; }}
+                    className="px-2 py-1.5 border border-whn-border rounded-lg text-xs" defaultValue="">
+                    <option value="">Load structure…</option>
+                    {structures.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                  <button onClick={saveStructure} title="Save current as a reusable structure"
+                    className="text-xs font-medium text-navy flex items-center gap-1 hover:underline"><Save size={13} /> Save</button>
+                </div>
               </div>
-              <div className="space-y-2">
-                {fields.salary_items.map((it, i) => (
-                  <div key={i} className="flex gap-2 items-center">
-                    <input value={it.component} onChange={e => setSalary(i, 'component', e.target.value)}
-                      placeholder="Component (e.g. Basic)" className="flex-1 px-2 py-1.5 border border-whn-border rounded-lg text-sm" />
-                    <input value={it.amount} onChange={e => setSalary(i, 'amount', e.target.value)}
-                      placeholder="Amount" className="w-32 px-2 py-1.5 border border-whn-border rounded-lg text-sm" />
-                    <button onClick={() => removeSalaryRow(i)} className="p-1 text-red-400 hover:bg-red-50 rounded"><X size={15} /></button>
+              <p className="text-[11px] text-text-secondary -mt-2">Amounts are monthly. Use “% of Basic” for components like HRA (40%), PF (12%), etc.</p>
+
+              <SalaryGroup title="Earnings (build Gross)" category="earning" comps={fields.salary.components}
+                basic={comp.basic} onUpdate={updateComp} onRemove={removeComp} onAdd={() => addComp('earning')} />
+              <SalaryGroup title="Employer Contributions (add to CTC)" category="employer" comps={fields.salary.components}
+                basic={comp.basic} onUpdate={updateComp} onRemove={removeComp} onAdd={() => addComp('employer')} />
+              <SalaryGroup title="Deductions (reduce Net Take-home)" category="deduction" comps={fields.salary.components}
+                basic={comp.basic} onUpdate={updateComp} onRemove={removeComp} onAdd={() => addComp('deduction')} />
+
+              {/* Variable pay */}
+              <div className="border border-whn-border rounded-lg p-3">
+                <label className="flex items-center gap-2 text-sm font-medium text-navy">
+                  <input type="checkbox" checked={fields.salary.variable.enabled}
+                    onChange={e => setVariable({ enabled: e.target.checked })} />
+                  Add Variable Pay
+                </label>
+                {fields.salary.variable.enabled && (
+                  <div className="grid grid-cols-2 gap-2 mt-3">
+                    <div>
+                      <label className="text-[11px] text-text-secondary">Amount per payout</label>
+                      <input type="number" value={fields.salary.variable.amount || ''} onChange={e => setVariable({ amount: Number(e.target.value) })}
+                        className="w-full mt-0.5 px-2 py-1.5 border border-whn-border rounded-lg text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-text-secondary">Frequency</label>
+                      <select value={fields.salary.variable.frequency} onChange={e => setVariable({ frequency: e.target.value })}
+                        className="w-full mt-0.5 px-2 py-1.5 border border-whn-border rounded-lg text-sm">
+                        {FREQUENCIES.map(f => <option key={f}>{f}</option>)}
+                      </select>
+                    </div>
+                    <p className="col-span-2 text-[11px] text-text-secondary">Annual variable: ₹ {formatINR(comp.variableAnnual)}</p>
                   </div>
-                ))}
+                )}
               </div>
-              <div className="flex justify-between items-center mt-3 pt-3 border-t border-whn-border text-sm">
-                <span className="font-medium text-text-secondary">Total</span>
-                <span className="font-bold text-navy">₹ {salaryTotal.toLocaleString('en-IN')}</span>
+
+              {/* Totals */}
+              <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1.5">
+                <Total label="Gross Salary" monthly={comp.grossMonthly} annual={comp.grossAnnual} />
+                <Total label="+ Employer Contributions" monthly={comp.employerMonthly} annual={comp.employerAnnual} muted />
+                <Total label="Cost to Company (CTC)" monthly={comp.ctcMonthly} annual={comp.ctcAnnual} bold />
+                {comp.variableEnabled && <p className="text-[11px] text-text-secondary text-right">CTC (annual) includes ₹ {formatINR(comp.variableAnnual)} variable</p>}
+                <Total label="− Deductions" monthly={comp.deductionsMonthly} annual={comp.deductionsAnnual} muted />
+                <Total label="Net Take-home" monthly={comp.netMonthly} annual={comp.netAnnual} bold accent />
               </div>
             </div>
 
@@ -289,7 +408,7 @@ export default function OfferLettersPage() {
           {/* Preview */}
           <div>
             <label className="text-xs font-medium text-text-secondary">Preview</label>
-            <div className="mt-1 bg-white border border-whn-border rounded-xl p-6 min-h-[400px] max-h-[70vh] overflow-y-auto offer-preview">
+            <div className="mt-1 bg-white border border-whn-border rounded-xl p-6 min-h-[400px] max-h-[80vh] overflow-y-auto offer-preview">
               {previewHtml
                 ? <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
                 : <p className="text-text-secondary text-sm text-center py-20">Click <b>Preview</b> to see the filled letter.</p>}
@@ -330,16 +449,30 @@ export default function OfferLettersPage() {
                 </div>
               )}
             </div>
+
+            {structures.length > 0 && (
+              <div className="mt-6">
+                <h2 className="text-sm font-bold text-navy uppercase tracking-wider mb-3">Saved Salary Structures</h2>
+                <div className="space-y-2">
+                  {structures.map(s => (
+                    <div key={s.id} className="bg-white border border-whn-border rounded-xl p-3 flex items-center gap-3 text-sm">
+                      <span className="font-medium text-navy flex-1">{s.name}</span>
+                      <span className="text-xs text-text-secondary">{s.structure.components?.length || 0} components</span>
+                      <button onClick={() => deleteStructure(s.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400"><Trash2 size={14} /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Placeholder help */}
           <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-4 h-fit">
             <h3 className="text-sm font-bold text-navy flex items-center gap-1.5 mb-2"><Info size={15} /> Placeholders</h3>
             <p className="text-xs text-text-secondary mb-3">In your Word file, type these tokens where the data should appear. They’re replaced automatically when a letter is generated.</p>
             <div className="space-y-1.5">
               {PLACEHOLDERS.map(([token, label]) => (
                 <div key={token} className="text-xs">
-                  <code className="bg-white border border-blue-100 px-1.5 py-0.5 rounded text-navy whitespace-pre-wrap">{token}</code>
+                  <code className="bg-white border border-blue-100 px-1.5 py-0.5 rounded text-navy whitespace-pre-wrap break-all">{token}</code>
                   <span className="text-text-secondary ml-1.5">— {label}</span>
                 </div>
               ))}
@@ -425,6 +558,57 @@ function Field({ label, value, onChange, type = 'text' }: { label: string; value
       <label className="text-xs font-medium text-text-secondary">{label}</label>
       <input type={type} value={value} onChange={e => onChange(e.target.value)}
         className="w-full mt-1 px-3 py-2 border border-whn-border rounded-lg text-sm" />
+    </div>
+  );
+}
+
+function SalaryGroup({ title, category, comps, basic, onUpdate, onRemove, onAdd }: {
+  title: string; category: SalaryCategory;
+  comps: { name: string; category: SalaryCategory; mode: string; value: number }[];
+  basic: number;
+  onUpdate: (idx: number, patch: Record<string, unknown>) => void;
+  onRemove: (idx: number) => void; onAdd: () => void;
+}) {
+  const rows = comps.map((c, idx) => ({ c, idx })).filter(x => x.c.category === category);
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider">{title}</h4>
+        <button onClick={onAdd} className="text-xs font-medium text-navy flex items-center gap-1 hover:underline"><Plus size={12} /> Add</button>
+      </div>
+      <div className="space-y-1.5">
+        {rows.map(({ c, idx }) => {
+          const monthly = c.mode === 'fixed' ? (Number(c.value) || 0) : Math.round((Number(c.value) || 0) / 100 * basic);
+          return (
+            <div key={idx} className="flex gap-1.5 items-center">
+              <input value={c.name} onChange={e => onUpdate(idx, { name: e.target.value })}
+                placeholder="Component" className="flex-1 min-w-0 px-2 py-1.5 border border-whn-border rounded-lg text-sm" />
+              <select value={c.mode} onChange={e => onUpdate(idx, { mode: e.target.value })}
+                className="px-1.5 py-1.5 border border-whn-border rounded-lg text-xs">
+                <option value="fixed">₹ Fixed</option>
+                <option value="percent_basic">% of Basic</option>
+              </select>
+              <input type="number" value={c.value || ''} onChange={e => onUpdate(idx, { value: Number(e.target.value) })}
+                className="w-20 px-2 py-1.5 border border-whn-border rounded-lg text-sm" />
+              <span className="w-24 text-right text-xs text-text-secondary tabular-nums">₹ {formatINR(monthly)}</span>
+              <button onClick={() => onRemove(idx)} className="p-1 text-red-400 hover:bg-red-50 rounded"><X size={14} /></button>
+            </div>
+          );
+        })}
+        {rows.length === 0 && <p className="text-xs text-text-secondary italic">None</p>}
+      </div>
+    </div>
+  );
+}
+
+function Total({ label, monthly, annual, bold, muted, accent }: {
+  label: string; monthly: number; annual: number; bold?: boolean; muted?: boolean; accent?: boolean;
+}) {
+  return (
+    <div className={`flex justify-between items-baseline ${bold ? 'font-bold' : ''} ${muted ? 'text-text-secondary' : ''} ${accent ? 'text-green-700' : 'text-navy'}`}>
+      <span>{label}</span>
+      <span className="tabular-nums">₹ {formatINR(monthly)}<span className="text-xs font-normal text-text-secondary"> /mo</span>
+        <span className="mx-1 text-gray-300">·</span>₹ {formatINR(annual)}<span className="text-xs font-normal text-text-secondary"> /yr</span></span>
     </div>
   );
 }
