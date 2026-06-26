@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import {
   HelpCircle, LayoutDashboard, Users, Briefcase, Calendar, ClipboardCheck,
@@ -142,10 +143,35 @@ const ROLE_OVERVIEW: Record<string, string> = {
   Viewer: 'You have read-only access to browse candidates, jobs, interviews and reviews.',
 };
 
+// Maps a feature label to the anchor slug used by the per-page "?" help links.
+const SLUGS: Record<string, string> = {
+  'Dashboard': 'dashboard', 'Candidates': 'candidates', 'Jobs': 'jobs', 'Interviews': 'interviews',
+  'Reviews': 'reviews', 'Offer Letters': 'offer-letters', 'Upload Resumes': 'upload',
+  'Email Templates': 'templates', 'Career Page': 'careers', 'Referral Portal': 'referral',
+  'Settings': 'settings', 'My Account': 'account',
+};
+
 export default function HelpPage() {
   const { user } = useAuth();
   const role = user?.role || 'Viewer';
   const features = FEATURES.filter(f => f.roles.includes(role));
+
+  // Open and highlight the section a "?" link points at (/help#faq-<slug>).
+  useEffect(() => {
+    const openFromHash = () => {
+      const id = decodeURIComponent(window.location.hash.replace('#', ''));
+      if (!id) return;
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (el.tagName.toLowerCase() === 'details') (el as HTMLDetailsElement).open = true;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      el.classList.add('ring-2', 'ring-gold');
+      setTimeout(() => el.classList.remove('ring-2', 'ring-gold'), 1800);
+    };
+    openFromHash();
+    window.addEventListener('hashchange', openFromHash);
+    return () => window.removeEventListener('hashchange', openFromHash);
+  }, []);
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
@@ -166,7 +192,7 @@ export default function HelpPage() {
       {/* Per-tab accordions */}
       <div className="space-y-2">
         {features.map((f, i) => (
-          <details key={f.label} open={i === 0} className="group bg-white border border-whn-border rounded-xl overflow-hidden">
+          <details key={f.label} id={`faq-${SLUGS[f.label] || ''}`} open={i === 0} className="group bg-white border border-whn-border rounded-xl overflow-hidden scroll-mt-16">
             <summary className="flex items-center gap-3 px-4 py-3 cursor-pointer list-none hover:bg-gray-50">
               <span className="w-8 h-8 rounded-lg bg-navy/5 flex items-center justify-center text-navy flex-shrink-0">
                 <f.icon size={16} />
