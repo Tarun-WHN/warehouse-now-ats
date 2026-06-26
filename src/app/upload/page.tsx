@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Upload, FileText, Table, CheckCircle, AlertCircle,
   X, FileSpreadsheet, Loader2
@@ -24,6 +24,10 @@ export default function UploadPage() {
   const [excelUploading, setExcelUploading] = useState(false);
   const [checkingInbox, setCheckingInbox] = useState(false);
   const [inboxMsg, setInboxMsg] = useState('');
+  const [forwardAddr, setForwardAddr] = useState('rakesh.dg@warehousenow.in');
+  useEffect(() => {
+    fetch('/api/settings').then(r => r.json()).then(d => { if (d.resume_forwarding_address) setForwardAddr(d.resume_forwarding_address); }).catch(() => {});
+  }, []);
 
   const checkInbox = async () => {
     setCheckingInbox(true);
@@ -304,7 +308,7 @@ export default function UploadPage() {
       <div className="mt-6 bg-navy/5 rounded-xl p-6 border border-navy/10">
         <h3 className="font-semibold text-navy mb-2">Email Forwarding</h3>
         <p className="text-sm text-text-secondary">
-          Email resumes to <strong className="text-navy">hr@warehousenow.in</strong> (as attachments) and they are automatically parsed and added to the candidate database. The inbox is checked every few minutes.
+          Email resumes to <strong className="text-navy">{forwardAddr}</strong> (as attachments) and they are automatically parsed and added to the candidate database. The inbox is checked every few minutes.
         </p>
         <p className="text-xs text-text-secondary mt-2">
           Supports PDF, DOC, DOCX and TXT attachments. Requires the mailbox credentials (Google App Password) to be configured in the server environment.

@@ -48,6 +48,25 @@ export default function SettingsPage() {
 
   const showSaved = () => { setSaved(true); setTimeout(() => setSaved(false), 2000); };
 
+  // Email settings (persisted): resume-forwarding address
+  const [forwardAddr, setForwardAddr] = useState('');
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [emailSaveMsg, setEmailSaveMsg] = useState('');
+  useEffect(() => {
+    fetch('/api/settings').then(r => r.json()).then(d => setForwardAddr(d.resume_forwarding_address || '')).catch(() => {});
+  }, []);
+  const saveEmailSettings = async () => {
+    setSavingEmail(true); setEmailSaveMsg('');
+    const res = await fetch('/api/settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resume_forwarding_address: forwardAddr }),
+    });
+    const data = await res.json();
+    setSavingEmail(false);
+    if (res.ok) { setForwardAddr(data.resume_forwarding_address || forwardAddr); showSaved(); }
+    else setEmailSaveMsg(data.error || 'Failed to save');
+  };
+
   // Team fetch
   const fetchTeam = () => {
     setLoadingTeam(true);
@@ -434,10 +453,15 @@ export default function SettingsPage() {
               </div>
               <div>
                 <label className="text-sm text-text-secondary font-medium">Resume Forwarding Address</label>
-                <input type="email" defaultValue="hr@warehousenow.in" className="w-full mt-1 px-3 py-2 border border-whn-border rounded-lg text-sm focus:ring-2 focus:ring-gold" readOnly />
-                <p className="text-xs text-text-secondary mt-1">Resumes forwarded to this address will be auto-parsed.</p>
+                <input type="email" value={forwardAddr} onChange={e => setForwardAddr(e.target.value)}
+                  placeholder="rakesh.dg@warehousenow.in"
+                  className="w-full mt-1 px-3 py-2 border border-whn-border rounded-lg text-sm focus:ring-2 focus:ring-gold" />
+                <p className="text-xs text-text-secondary mt-1">The address you tell staff to forward CVs to. For auto-parsing to work, this mailbox must be the one the app polls (its IMAP/SMTP credentials on the server) — or set up auto-forwarding from it into that mailbox.</p>
+                {emailSaveMsg && <p className="text-xs text-red-600 mt-1">{emailSaveMsg}</p>}
               </div>
-              <button onClick={showSaved} className="bg-gold text-navy-dark px-6 py-2 rounded-lg text-sm font-semibold hover:bg-gold-dark">Save Email Settings</button>
+              <button onClick={saveEmailSettings} disabled={savingEmail} className="bg-gold text-navy-dark px-6 py-2 rounded-lg text-sm font-semibold hover:bg-gold-dark disabled:opacity-50 inline-flex items-center gap-2">
+                {savingEmail && <Loader2 size={15} className="animate-spin" />}Save Email Settings
+              </button>
             </div>
           )}
 

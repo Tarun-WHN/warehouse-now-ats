@@ -23,6 +23,7 @@ function getDb(): Database.Database {
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
     initDb(db);
+    seedSettings(db);
     backfillCandidatePasswords(db);
   }
   return db;
@@ -226,6 +227,11 @@ function initDb(db: Database.Database) {
       name TEXT NOT NULL,
       data TEXT NOT NULL DEFAULT '{}',
       created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT DEFAULT ''
     );
 
     CREATE TABLE IF NOT EXISTS processed_emails (
@@ -1094,6 +1100,28 @@ export function addSalaryStructure(name: string, structure: SalaryStructure): Sa
 export function deleteSalaryStructure(id: string): boolean {
   const db = getDb();
   return db.prepare('DELETE FROM salary_structures WHERE id = ?').run(id).changes > 0;
+}
+
+// ─── App settings (simple key/value store) ───
+
+export function getSetting(key: string, fallback = ''): string {
+  const db = getDb();
+  const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as { value: string } | undefined;
+  return row?.value ?? fallback;
+}
+
+export function setSetting(key: string, value: string): void {
+  const db = getDb();
+  db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+    .run(key, value);
+}
+
+// Default the resume-forwarding address once (first boot of this table).
+function seedSettings(db: Database.Database) {
+  const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get('resume_forwarding_address');
+  if (!row) {
+    db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?)').run('resume_forwarding_address', 'rakesh.dg@warehousenow.in');
+  }
 }
 
 // ═══════════════════════════════════════════════════
