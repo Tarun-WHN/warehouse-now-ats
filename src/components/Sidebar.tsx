@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { Logo } from './Logo';
 import {
   LayoutDashboard, Users, Upload, Mail, UserPlus, Settings,
-  ChevronLeft, ChevronRight, Briefcase, Calendar, Globe, LogOut, ClipboardCheck, UserCircle, FileText
+  ChevronLeft, ChevronRight, Briefcase, Calendar, Globe, LogOut, ClipboardCheck, UserCircle, FileText, HelpCircle
 } from 'lucide-react';
 import { useState } from 'react';
 import { ThemeToggle } from './ThemeToggle';
@@ -24,6 +24,7 @@ const ALL_NAV_ITEMS = [
   { href: '/referral', label: 'Referral Portal', icon: UserPlus, roles: ['Admin', 'Recruiter', 'Hiring Manager'] },
   { href: '/settings', label: 'Settings', icon: Settings, roles: ['Admin', 'Recruiter'] },
   { href: '/account', label: 'My Account', icon: UserCircle, roles: ['Admin', 'Recruiter', 'Hiring Manager', 'Viewer'] },
+  { href: '/help', label: 'Help & FAQ', icon: HelpCircle, roles: ['Admin', 'Recruiter', 'Hiring Manager', 'Viewer'] },
 ];
 
 export function Sidebar() {
